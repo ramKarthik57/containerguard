@@ -1,0 +1,35 @@
+# ContainerGuard Experimental Evaluation Protocol
+
+## 1. Research Objectives
+
+Validate the resilience of ContainerGuard under telemetry pressure, lifecycle races, and adversarial evasion attempts.
+
+---
+
+## 2. Controlled Experiment Suites
+
+### Experiment 1: Attribution Race Condition Validation
+- **Goal:** Verify that a container executing commands immediately upon `docker run` has all events correctly attributed rather than dropped or misattributed to the host.
+- **Method:**
+  1. Start ContainerGuard daemon.
+  2. Launch ephemeral container: `docker run --rm alpine /bin/sh -c "ls -la; id; date"`.
+  3. Inspect telemetry log: verify all 3 commands are attributed as `RESOLVED` with the container's ID and name, rather than `HOST_OR_UNMAPPED`.
+- **Metrics Collected:** Attribution recall rate, average pending queue duration (ms).
+
+### Experiment 2: Ring Buffer Saturation and Telemetry Accounting
+- **Goal:** Induce kernel ring buffer pressure and verify that:
+  a) Kernel `RINGBUF_RESERVE_DROPS` accounts for all dropped events.
+  b) Userspace sequence gap detector matches the kernel drops.
+- **Method:**
+  1. Restrict ring buffer or spawn flood container executing 50,000 rapid processes:
+     `docker run --rm alpine /bin/sh -c 'for i in $(seq 1 50000); do /bin/true; done'`
+  2. Observe final telemetry report.
+- **Metrics Collected:** `kernel_hook_invocations`, `kernel_ringbuf_reserve_drops`, `sequence_gaps_detected`, CPU and memory footprint.
+
+### Experiment 3: Two-Container Fairness Under Asymmetric Load
+- **Goal:** Container A floods the system with routine `execve` events while Container B executes a single low-frequency critical event (`nsenter`).
+- **Method:**
+  1. Container A runs high-frequency loop.
+  2. Container B executes `nsenter --help`.
+  3. Verify that ContainerGuard detects and logs Container B's critical alert despite Container A's event flood.
+- **Metrics Collected:** Critical event retention (recall), detection latency (ms).
