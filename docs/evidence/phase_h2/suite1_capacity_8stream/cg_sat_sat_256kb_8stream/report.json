@@ -1,17 +1,17 @@
 {
-  "timestamp": "2026-11-08T05:43:06.268551571Z",
-  "kernel_hook_invocations": 2092,
+  "timestamp": "2026-11-08T06:10:56.631715337Z",
+  "kernel_hook_invocations": 2082,
   "kernel_ringbuf_reserve_drops": 0,
-  "kernel_ringbuf_submitted": 2092,
+  "kernel_ringbuf_submitted": 2082,
   "kernel_cgroup_map_fails": 0,
-  "userspace_records_received": 2101,
-  "userspace_records_decoded": 2101,
+  "userspace_records_received": 2082,
+  "userspace_records_decoded": 2082,
   "userspace_decode_failures": 0,
-  "attribution_pending_transitions": 73,
-  "current_pending_queue_depth": 19,
-  "peak_pending_queue_depth": 54,
-  "attribution_resolved": 2028,
-  "attribution_unresolved": 54,
+  "attribution_pending_transitions": 55,
+  "current_pending_queue_depth": 0,
+  "peak_pending_queue_depth": 42,
+  "attribution_resolved": 2027,
+  "attribution_unresolved": 55,
   "attribution_stale_mapping": 0,
   "attribution_host_confirmed": 0,
   "userspace_queue_overflows": 0,
@@ -22,4 +22,3 @@
   "kernel_drop_rate_pct": 0,
   "userspace_loss_count": 0
 }
-2026/11/08 05:43:06 [collector] ring buffer consumer stopped gracefully

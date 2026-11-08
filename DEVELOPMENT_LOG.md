@@ -250,6 +250,22 @@
   - Demonstrates graceful recovery: reader resumed consumption upon unpause, drained buffered events without deadlock or memory fault, and completed normal shutdown.
 - **Archival:** All Suite 1 and Suite 2 empirical logs, metric dumps, and reports archived in `docs/evidence/phase_h2/`.
 
+### Entry 010 - 2026-11-08: Phase H.2 Telemetry Audit, Shutdown Synchronization, and Verified Boundary Reruns
+- **Status:** Completed and Verified.
+- **Git Commit:** Following `b4e7b07`
+- **Root Cause Diagnoses & Fixes:**
+  1. *Delivery Exceeding 100% Anomaly:* Traced to asynchronous map closing in `collector.go` race-conditioning with final metrics poll. Fixed by keeping BPF maps open until after synchronous post-drain `PollKernelMetrics()`, guaranteeing submitted counter matches userspace decoded counter.
+  2. *Theoretical Capacity Verification:* `pahole` inspection verified `sizeof(struct exec_event)` is 336 bytes + 8 bytes header = 344 bytes. 1-second metric snapshots during reader freeze confirmed the buffer held **exactly 190 events for 64 KiB** ($\lfloor 65,536/344 \rfloor = 190$) and **exactly 762 events for 256 KiB** ($\lfloor 262,144/344 \rfloor = 762$) before `bpf_ringbuf_reserve` failed. Trailing accepted records occurred post-unpause during container cleanup.
+  3. *Unresolved Queue Entries at Exit:* Traced to background resource sampler (`ps`/`sleep`) executing within 0.5s of shutdown with unexpired 2-second TTL. Fixed by adding `buffer.Flush()` on shutdown to force-expire all pending items to `UNRESOLVED` and reset `CurrentPendingQueueDepth` to 0.
+  4. *Parser Fix:* Replaced shell sed extraction with Python delimiter block extractor, eliminating `JSONDecodeError`.
+- **Audited Reruns Executed Autonomously:**
+  - `sat_256kb_8stream`: 2,082 hooks, 2,082 submitted, 0 drops (0.00%), 2,082 decoded, 100.00% delivery, final queue depth: 0.
+  - `sat_bp_16mb`: 2,105 hooks, 2,105 submitted, 0 drops (0.00%), 2,105 decoded, 100.00% delivery, final queue depth: 0.
+  - `sat_bp_256kb`: 2,102 hooks, 801 submitted, 1,301 drops (61.89% loss), 801 decoded, 100.00% delivery, final queue depth: 0.
+  - `sat_bp_64kb`: 2,104 hooks, 231 submitted, 1,873 drops (89.02% loss), 231 decoded, 100.00% delivery, final queue depth: 0.
+- **Archival:** Original unreconciled runs preserved in `docs/evidence/phase_h2/original_unreconciled/`; verified runs active in `suite1_capacity_8stream/` and `suite2_backpressure/`.
+
+
 
 
 

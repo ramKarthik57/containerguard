@@ -270,9 +270,12 @@ Deterministic Alerts Preserved      4/4 (100%)          4/4 (100%)          4/4 
 3. **Sequence Order & Watermark Mechanics:**
    - Linux BPF Ring Buffer delivers records strictly in reservation order.
    - The Tier 4 anomaly was confirmed as an interleaving between `bpf_ringbuf_reserve` and atomic sequence ticket allocation (`next_seq_num()`) across concurrent CPU cores. The sliding watermark correctly absorbed this inversion without false drop alerts.
-4. **Saturation Boundary Distinction (Phase H.2):**
-   - The 25,000-event test proved throughput scalability up to 1,923 hooks/sec with zero loss, but did **not** reach Ring Buffer saturation.
-   - Phase H.2 implements a controlled saturation evaluation testing smaller ring buffer capacities (64 KiB, 256 KiB, 1 MiB) and artificial reader backpressure (see `docs/SATURATION_EVALUATION.md`).
+4. **Saturation Boundary Distinction & Verification (Phase H.2):**
+   - The 25,000-event test proved throughput scalability up to 1,923 hooks/sec with zero loss, but did not reach Ring Buffer saturation.
+   - Phase H.2 executed controlled saturation testing across 64 KiB, 256 KiB, 1 MiB, and 16 MiB buffers with induced 4-second reader backpressure.
+   - **Empirical Failure Boundaries:** Under backpressure, the 64 KiB buffer dropped 1,873 events (89.02% loss) after holding exactly 190 events during the pause ($\lfloor 65,536/344 \rfloor = 190$); the 256 KiB buffer dropped 1,301 events (61.89% loss) after holding exactly 762 events ($\lfloor 262,144/344 \rfloor = 762$); the 16 MiB buffer absorbed the burst with 0 drops (0.00% loss).
+   - **Conservation:** Across all tests, $\text{Hooks} = \text{Submissions} + \text{Drops}$ with 100% mathematical precision.
+   - **Shutdown Synchronization:** Collector shutdown and attribution queue draining were hardened with synchronous post-drain map polling and `buffer.Flush()`, eliminating delivery calculation skew and ensuring 0 stranded pending entries at exit (see `docs/SATURATION_EVALUATION.md`).
 
 
 

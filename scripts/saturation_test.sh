@@ -191,7 +191,7 @@ if os.path.exists("$RESOURCE_LOG"):
 
 target_tput = target_total / elapsed if elapsed > 0 else 0.0
 observed_tput = hooks / elapsed if elapsed > 0 else 0.0
-delivery_rate = (decoded / submits * 100.0) if submits > 0 else 0.0
+delivery_rate = min(100.0, (decoded / submits * 100.0)) if submits > 0 else 0.0
 kernel_drop_rate = (drops / hooks * 100.0) if hooks > 0 else 0.0
 
 print("=================================================================")

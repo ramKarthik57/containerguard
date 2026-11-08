@@ -209,6 +209,11 @@ func (ab *AttributionBuffer) ExpireStale(now time.Time) {
 	ab.accounting.CurrentPendingQueueDepth.Store(uint64(ab.pendingList.Len()))
 }
 
+// Flush forces expiration of all pending events, transitioning them to UNRESOLVED and draining the queue to 0.
+func (ab *AttributionBuffer) Flush() {
+	ab.ExpireStale(time.Now().Add(24 * time.Hour))
+}
+
 func (ab *AttributionBuffer) emit(event *telemetry.SecurityEvent) {
 	select {
 	case ab.outChan <- event:

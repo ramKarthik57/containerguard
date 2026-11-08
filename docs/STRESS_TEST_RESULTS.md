@@ -171,13 +171,13 @@ The table below details all injected security test conditions and actual alert o
 ## 5. Phase H.2 Controlled Ring Buffer Saturation Findings
 
 To resolve the saturation question, Phase H.2 executed two controlled benchmark suites:
-1. **Suite 1 (Capacity Sensitivity under 8-Stream Concurrency):** Evaluated 16 MiB, 1 MiB, 256 KiB, and 64 KiB buffers with an active userspace reader under ~2,400 hooks/sec. Result: **Zero reservation drops across all configurations**, proving that when the consumer keeps pace with the kernel, even a 64 KiB buffer accommodates rapid bursts, while reducing collector memory from 56.5 MiB to 25.0 MiB.
-2. **Suite 2 (Induced Userspace Backpressure & Failure Boundary):** Froze the userspace reader for 4 seconds during a 2,000-event burst:
-   - **16 MiB Baseline:** 0 drops (0.00% loss) — absorbed the burst.
-   - **256 KiB Buffer:** 1,302 reservation drops (61.79% loss) after holding 805 events (matching theoretical 762-event limit).
-   - **64 KiB Buffer:** 1,875 reservation drops (89.12% loss) after holding 229 events (matching theoretical 190-event limit).
+1. **Suite 1 (Capacity Sensitivity under 8-Stream Concurrency):** Evaluated 16 MiB, 1 MiB, 256 KiB, and 64 KiB buffers with an active userspace reader under up to 6,084 hooks/sec. Result: **Zero reservation drops across all configurations**, proving that when the consumer keeps pace with the kernel, even a 64 KiB buffer accommodates rapid multi-core bursts, while reducing collector memory from 56.5 MiB to 25.0 MiB.
+2. **Suite 2 (Induced Userspace Backpressure & Failure Boundary):** Froze the userspace reader for 4 seconds during a 2,000-event multi-core burst:
+   - **16 MiB Baseline:** 2,105 hooks, 2,105 submitted, **0 drops (0.00% loss)** — fully absorbed the burst.
+   - **256 KiB Buffer:** 2,102 hooks, 801 submitted, **1,301 reservation drops (61.89% loss)**. Held exactly 762 events during pause (matching theoretical $\lfloor 262,144/344 \rfloor = 762$ limit).
+   - **64 KiB Buffer:** 2,104 hooks, 231 submitted, **1,873 reservation drops (89.02% loss)**. Held exactly 190 events during pause (matching theoretical $\lfloor 65,536/344 \rfloor = 190$ limit).
    - **Conservation:** In all cases, $\text{Hooks} = \text{Submissions} + \text{Drops}$ with 100% mathematical precision.
-   - **Recovery:** Upon backpressure release, the reader resumed consumption, drained buffered records, and terminated cleanly.
+   - **Recovery:** Upon backpressure release, the reader resumed consumption, drained buffered records, and terminated cleanly with 0 queue backlog.
 
 Full methodology, capacity tables, and empirical matrices are published in [docs/SATURATION_EVALUATION.md](file:///home/ram/ebpf-smoke-test/docs/SATURATION_EVALUATION.md).
 

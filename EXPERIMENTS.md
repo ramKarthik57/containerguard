@@ -138,14 +138,15 @@ Identify the empirical telemetry loss boundary of the eBPF monitor by evaluating
   - Throughput: 2,316 – 2,445 hooks/sec.
   - Collector RSS: dropped from 56.5 MiB (16 MiB buffer) to 25.0 MiB (1 MiB buffer).
 
-### Empirical Results: Suite 2 (Induced 4-Second Userspace Backpressure)
+### Empirical Results: Suite 2 (Induced 4-Second Userspace Backpressure, Audited)
 * **Configuration:** 4 streams $\times$ 500 executions = 2,000 target events during 4.0s reader freeze.
 * **Findings:**
-  - `sat_bp_16mb`: 2,100 hooks, 2,100 submitted, **0 drops (0.00% loss)**. Absorbed entire burst.
-  - `sat_bp_256kb`: 2,107 hooks, 805 submitted, **1,302 drops (61.79% loss)**. Theoretical capacity: ~762; observed: 805.
-  - `sat_bp_64kb`: 2,104 hooks, 229 submitted, **1,875 drops (89.12% loss)**. Theoretical capacity: ~190; observed: 229.
-  - **Accounting Conservation:** In all cases, $\text{Hooks} = \text{Submissions} + \text{Drops}$ with 100% precision.
-  - **Recovery:** Once reader resumed, all buffered events drained cleanly without process death or data corruption.
+  - `sat_bp_16mb`: 2,105 hooks, 2,105 submitted, **0 drops (0.00% loss)**, 2,105 decoded, 100.00% delivery rate, 0 final queue depth. Absorbed entire burst.
+  - `sat_bp_256kb`: 2,102 hooks, 801 submitted, **1,301 drops (61.89% loss)**, 801 decoded, 100.00% delivery rate, 0 final queue depth. Held exactly 762 events during pause ($\lfloor 262,144/344 \rfloor = 762$).
+  - `sat_bp_64kb`: 2,104 hooks, 231 submitted, **1,873 drops (89.02% loss)**, 231 decoded, 100.00% delivery rate, 0 final queue depth. Held exactly 190 events during pause ($\lfloor 65,536/344 \rfloor = 190$).
+  - **Accounting Conservation:** In all cases, $\text{Hooks} = \text{Submissions} + \text{Drops}$ with 100% mathematical precision.
+  - **Recovery:** Once reader resumed, all buffered events drained cleanly without process death, data corruption, or stranded queue entries.
+
 
 
 

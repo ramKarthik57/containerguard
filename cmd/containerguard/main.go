@@ -109,8 +109,16 @@ func main() {
 		select {
 		case <-ctx.Done():
 			log.Println("[containerguard] Shutdown signal received, terminating collector...")
+			// 1. Stop ring buffer reader to unblock readLoop while keeping BPF maps accessible
+			bpfCollector.StopReader()
+
+			// 2. Flush ingester sequence gap tracker
 			ingester.Flush()
-			// Drain remaining events in outChan up to 3 seconds deadline
+
+			// 3. Force-expire any lingering pending events to UNRESOLVED to cleanly drain queue to 0
+			buffer.Flush()
+
+			// 4. Drain remaining events in outChan up to 3 seconds deadline
 			drainTimeout := time.After(3 * time.Second)
 		drainLoop:
 			for {
@@ -132,6 +140,11 @@ func main() {
 				default:
 					break drainLoop
 				}
+			}
+
+			// 5. Synchronously poll final kernel metrics from BPF maps *now* that all events have drained
+			if err := bpfCollector.PollKernelMetrics(); err != nil {
+				log.Printf("[collector] warning: final kernel metrics poll: %v", err)
 			}
 
 			finalSnapshot := accounting.Snapshot()

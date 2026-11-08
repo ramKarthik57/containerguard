@@ -137,10 +137,10 @@ func (c *BPFCollector) Start(ctx context.Context) error {
 
 	log.Printf("[collector] eBPF program loaded: %s (tracepoint sys_enter_execve attached)", c.bpfPath)
 
-	// Clean shutdown helper: when ctx cancels, close ring reader to unblock reader.Read()
+	// Clean shutdown helper: when ctx cancels, stop the ring reader to unblock readLoop
 	go func() {
 		<-ctx.Done()
-		c.Close()
+		c.StopReader()
 	}()
 
 	// Start background kernel metrics sync loop
@@ -190,6 +190,15 @@ func (c *BPFCollector) isClosed() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.closed
+}
+
+// StopReader closes only the ring buffer reader, unblocking readLoop while preserving maps for final polling.
+func (c *BPFCollector) StopReader() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ringReader != nil {
+		_ = c.ringReader.Close()
+	}
 }
 
 // Close safely unloads eBPF programs, links, and readers.
