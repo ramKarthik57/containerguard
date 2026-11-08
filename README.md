@@ -3,7 +3,7 @@
 ### Resilient eBPF-Based Runtime Intrusion Detection for Linux Containers
 
 [![Milestone](https://img.shields.io/badge/Milestone-50%25%20Verified%20Release-blue?style=for-the-badge)](docs/MILESTONE_50_PERCENT_ACCEPTANCE_REPORT.md)
-[![Kernel](https://img.shields.io/badge/Linux%20Kernel-6.x%2B%20(BTF%20%2B%20CO--RE)-orange?style=for-the-badge)](https://www.kernel.org/)
+[![Kernel](https://img.shields.io/badge/Linux%20Kernel-6.18%20Validated%20(BTF%20%2B%20CO--RE)-orange?style=for-the-badge)](https://www.kernel.org/)
 [![Runtime](https://img.shields.io/badge/eBPF-Ring%20Buffer-green?style=for-the-badge)](https://docs.kernel.org/bpf/ringbuf.html)
 [![Go](https://img.shields.io/badge/Go-1.26.8-00ADD8?style=for-the-badge&logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/State-FROZEN%20%26%20HALTED-red?style=for-the-badge)](#roadmap-and-development-status)
@@ -19,7 +19,7 @@ ContainerGuard is an eBPF-based runtime security and container telemetry archite
 The project investigates fundamental systems security challenges in container observability:
 - **Telemetry Integrity Under Saturation:** Accounting for kernel-side buffer drops and maintaining exact mathematical conservation:
   $$\text{Kernel Hook Invocations} = \text{Ring Buffer Submissions} + \text{Kernel Reservation Drops}$$
-- **Decoupled Process Instance Identity:** Neutralizing PID recycling and cgroup reassignment attacks via immutable `ProcessInstanceKey{TGID, StartTimeNS}` tracking.
+- **Decoupled Process Instance Identity:** Mitigating PID recycling collisions and tracking cgroup reassignments across container lifecycles via immutable `ProcessInstanceKey{TGID, StartTimeNS}` tracking.
 - **Execution-Path Semantics:** Correlating 5 coordinated kernel tracepoints to differentiate execution attempts, committed binary activations, and kernel-side execution failures across standard `execve`, relative `execveat`, and anonymous `memfd` invocations.
 - **Deterministic Attribution:** Mapping cgroup v2 filesystem inodes directly to container runtime lifecycle metadata with tombstone caching, avoiding the race conditions of asynchronous container destruction.
 
@@ -57,7 +57,7 @@ Modern container monitoring architectures commonly suffer from severe architectu
 - They default unmapped container events to host processes.
 - When high-volume execution bursts saturate kernel buffers, they drop events silently, leaving security teams unaware that telemetry was lost.
 
-ContainerGuard addresses these failure modes through an in-kernel eBPF architecture coupled with a concurrent userspace pipeline. Every process execution is intercepted at kernel tracepoint boundaries, enriched with cgroup v2 filesystem inodes, assigned an immutable monotonic sequence number, and transferred to user space via an eBPF Ring Buffer. In user space, ContainerGuard reconciles events against the Docker engine event stream, resolves full process lineage, evaluates deterministic detection rules, and continuously verifies telemetry delivery against kernel eBPF array map counters.
+ContainerGuard addresses these failure modes through an in-kernel eBPF architecture coupled with a concurrent userspace pipeline. Monitored process executions across execve and execveat pathways are intercepted at kernel tracepoint boundaries, enriched with cgroup v2 filesystem inodes, assigned an immutable monotonic sequence number, and transferred to user space via an eBPF Ring Buffer. In user space, ContainerGuard reconciles events against the Docker engine event stream, resolves full process lineage, evaluates deterministic detection rules, and continuously verifies telemetry delivery against kernel eBPF array map counters.
 
 ---
 
@@ -235,7 +235,7 @@ sequenceDiagram
 ContainerGuard's kernel engine ([`bpf/execve_events.c`](bpf/execve_events.c)) is compiled with Clang/LLVM using CO-RE (`#include "vmlinux.h"`). It uses BTF type relocations to ensure binary portability across kernel patch versions.
 
 ### 5.1 Enriched 360-Byte Binary Event Layout
-The kernel telemetry event structure is 64-bit aligned and occupies exactly 360 bytes on the wire:
+The kernel telemetry event structure is 64-bit aligned, defining a 360-byte binary payload transferred to user space. On the wire within the eBPF ring buffer, each event occupies exactly 368 bytes, comprising the 360-byte struct payload plus the mandatory 8-byte eBPF ring buffer record header (`struct bpf_ringbuf_hdr`):
 
 ```c
 struct exec_event {
@@ -489,7 +489,7 @@ The ring buffer capacity depends on the wire footprint of the event structure (s
 | **`CG-RULE-003`** | Container Shell Binary Execution (`/bin/sh`, `/bin/bash`) | 5 | 0 | 128 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
 | **Macro Average**| **Across All 3 Rules (399 Rule Decisions)** | **12**| **0**| **387**| **0**| **100.00%**| **100.00%**| **100.00%**| **0.00%**|
 
-> **Corpus Reconciliation Note:** In Dataset 1 (`7c56b1e`), 133 unique events were captured due to a single ambient host background IDE invocation (`/usr/bin/git`, `TGID: 16615`, `ParentTGID: 1016`, `StartTimeNS: 17478663146`, comm `language_server`, cgroup `22`) during daemon shutdown drain. In Dataset 2 (`b8f70f5`), exactly 132 scripted events were captured in a clean environment. The ambient IDE process was correctly evaluated by the engine as benign host activity across all rules (+1 TN each $\to$ +3 TN total), yielding 100% precision and 0 false positives in both evaluations.
+> **Corpus Reconciliation Note:** In Dataset 1 (`7c56b1e`), 133 unique events were captured due to a single ambient host background IDE invocation (`/usr/bin/git`, `TGID: 16615`, `ParentTGID: 1016`, `StartTimeNS: 17478663146`, comm `language_server`, cgroup `22`) during daemon shutdown drain. In Dataset 2 (`b8f70f5`), exactly 132 scripted events were captured in a clean environment. Forensically, benchmark ground truth identifies this as benign background IDE activity, while ContainerGuard attribution left it strictly as `UNRESOLVED` (cgroup 22 unmapped). Because it matched no container attack criteria, zero false positives were emitted, contributing +1 True Negative per rule (+3 TN total across 399 decisions). Both evaluations exhibited 100% precision and recall on the benchmark suite.
 
 ### D. Runtime Monitoring Overhead
 *Workload:* 2,000 rapid process executions across 4 worker streams with and without monitoring.
@@ -497,19 +497,19 @@ The ring buffer capacity depends on the wire footprint of the event structure (s
 
 | Metric | Trial 1 (Commit `7c56b1e`) | Trial 2 (Commit `b8f70f5`) | Descriptive Mean | Statistical Qualification |
 | :--- | :---: | :---: | :---: | :--- |
-| **Unmonitored Baseline Duration** | 0.4492 s (4,451.9 ev/s) | 0.4267 s (4,687.3 ev/s) | 0.4380 s | Baseline variance: $\pm 0.0113\text{ s}$ |
-| **Monitored Workload Duration** | 0.4648 s (4,303.1 ev/s) | 0.4520 s (4,424.3 ev/s) | 0.4584 s | Monitored variance: $\pm 0.0064\text{ s}$ |
+| **Unmonitored Baseline Duration** | 0.4492 s (4,451.9 ev/s) | 0.4267 s (4,687.3 ev/s) | 0.4380 s | Baseline half-range: $\pm 0.0113\text{ s}$ (range: 0.0225 s) |
+| **Monitored Workload Duration** | 0.4648 s (4,303.1 ev/s) | 0.4520 s (4,424.3 ev/s) | 0.4584 s | Monitored half-range: $\pm 0.0064\text{ s}$ (range: 0.0128 s) |
 | **Execution Time Overhead (%)** | **+3.46%** | **+5.95%** | **4.71%** | Sample $s \approx 1.76\%$, $SEM \approx 1.25\%$ ($N=2$) |
 | **Wall-Clock Delta / Lifecycle**| $7.77\ \mu\text{s}$ | $12.68\ \mu\text{s}$ | $10.22\ \mu\text{s}$ | Amortized across full process lifecycle |
 | **Daemon RSS Memory Footprint** | 6.02 MiB | 6.04 MiB | 6.03 MiB | Peak RSS under multi-stream load |
 
-> **Methodological Qualification:** Across two benchmark observations on separate software revisions, the measured execution overhead was 3.46% and 5.95% (descriptive mean: 4.71%). Because the measurements were taken across separate commits and only two observations, this mean should not be interpreted as an exact characterization of production performance overhead.
+> **Methodological Qualification:** Across two benchmark observations on separate software revisions, the measured execution overhead was 3.46% and 5.95% (descriptive mean: 4.71%). Because the measurements were taken across separate commits and only two observations, this mean should not be interpreted as an exact characterization of production performance overhead. For Trial 2, the amortized wall-clock delta is 12.68 µs from raw unrounded timer timestamps (0.02536 s / 2,000), or 12.65 µs when evaluated with 4-decimal rounded values (0.0253 s / 2,000). Potential host virtualization scheduling jitter or background activity represents a possible source of baseline variation across trials, rather than a proven cause.
 
 ---
 
 ## 11. System Requirements & Prerequisites
 
-- **Operating System:** Linux 6.1+ x86_64 with kernel BTF enabled (`/sys/kernel/btf/vmlinux`).
+- **Operating System & Kernel:** Empirically verified on Linux `6.18.33.1-microsoft-standard-WSL2` (x86_64) with kernel BTF enabled (`/sys/kernel/btf/vmlinux`). While core features theoretically require modern Linux kernels (>= 5.8 for ring buffer, >= 5.2 for BTF/CO-RE), compatibility across the entire 6.x range has not been tested, and 6.1 is not an independently verified compatibility floor.
 - **Control Groups:** Unified cgroup v2 hierarchy mounted at `/sys/fs/cgroup`.
 - **Compilers:** Clang / LLVM $\ge 14.0$ (tested with Clang 21.1.8), Go $\ge 1.26.8$ (as declared in `go.mod`).
 - **Libraries & Headers:** `libbpf-dev` ($\ge 1.0$), Linux kernel headers.

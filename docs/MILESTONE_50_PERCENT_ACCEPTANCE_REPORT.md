@@ -32,8 +32,8 @@ ContainerGuard has achieved its designated **50% development milestone gate**. P
 | **8** | **Process Identity & Lineage** | `internal/lineage/lineage.go`, `event.go` | Process leader start time, multi-thread test | `ProcessInstanceKey{TGID, StartTimeNS}` invariant to PID reuse and cgroup shifts | **ACCEPTED** |
 | **9** | **Cgroup Migration Handling** | `internal/lineage/lineage.go`, `bpf/execve_events.c` | Live cgroup migration between `/sys/fs/cgroup/cg_mig_*` | Process lineage unified under single node; `CgroupHistory` and `cgroup_migrated: true` logged | **ACCEPTED** |
 | **10**| **Metadata & Path Truncation Handling** | `bpf/execve_events.c`, `event.go` | Path > 350B, comm 16B in `test_exec_paths` | `path_truncated: true` (null-terminated), `comm_truncated: true` | **ACCEPTED** |
-| **11**| **Deterministic Detection Rules** | `internal/detection/engine.go` | Labelled corpus (121 benign vs 12 attack simulations) | 100% Precision, 100% Recall, 0.00% FPR across `CG-RULE-001`, `002`, `003` | **ACCEPTED** |
-| **12**| **Bounded Queue & Graceful Shutdown** | `internal/pipeline/attribution_buffer.go`, `main.go` | Bounded pending queue (cap: 4,096), shutdown drain | Buffer flushed on SIGTERM; final queue depth = 0 in all benchmarks | **ACCEPTED** |
+| **11**| **Deterministic Detection Rules** | `internal/detection/engine.go` | Labelled corpus (Dataset 1: 121 benign + 12 attack = 133 events; Dataset 2: 120 benign + 12 attack = 132 events) | 100% Precision, 100% Recall, 0.00% FPR across `CG-RULE-001`, `002`, `003` | **ACCEPTED** |
+| **12**| **Bounded Queue & Graceful Shutdown** | `internal/pipeline/attribution_buffer.go`, `main.go` | Bounded pending queue (daemon default capacity: 10,000 per `DefaultConfig().MaxPendingCapacity`; tested peak depth: 1,371) | Buffer flushed on SIGTERM; final queue depth = 0 in all benchmarks | **ACCEPTED** |
 | **13**| **Telemetry Integrity & Saturation** | `scripts/saturation_test.sh`, `stress_test.sh` | 64 KiB, 256 KiB, 1 MiB, 16 MiB backpressure tests | Theoretical limits verified (64KB holds 190 events, 256KB holds 762 events before drop) | **ACCEPTED** |
 | **14**| **Execution-Path Coverage** | `cmd/test_exec_paths/main.c`, `scripts/execution_path_test.sh` | 12 execution pathways tested | All 12 execution paths verified in live Linux kernel | **ACCEPTED** |
 | **15**| **Detection & False-Positive Evaluation**| `scripts/detection_benchmark.sh` | Git operations, GCC build, container utilities | Zero false positives on host development activities | **ACCEPTED** |
@@ -71,13 +71,18 @@ $$\text{Kernel Hook Invocations} = \text{Ring Buffer Submissions} + \text{Ring B
 
 ### 3.4 Detection Rule Precision & Scope Refinement (CG-RULE-003)
 - **Rule CG-RULE-003 Audit:** The rule was audited to ensure accurate scientific claims. Because the probe checks binary path execution (`/bin/sh`, `/bin/bash`, etc.) and does not inspect terminal ptys or `-i` flags, the rule was refined from "Interactive Shell" to **"Shell Binary Executed Inside Container"** (`ContainerShellRule`), with an explicit note that terminal interactivity is not evaluated in the 50% milestone.
-- **Evaluation Corpus (132 events):**
-  - Benign Developer Workloads (120 events): Git init/add/commit/diff/log/status, GCC compilation toolchain, container queries.
-  - Attack Simulations (12 events): Breakout utilities (`nsenter`, `unshare`, `chroot`, `modprobe`), writable directory executions (`/tmp`, `/dev/shm`, `/var/tmp`), container shell executions (`/bin/sh`).
-  - Results:
-    - `CG-RULE-001`: TP=4, FP=0, TN=128, FN=0 (Precision=100%, Recall=100%, FPR=0.00%)
-    - `CG-RULE-002`: TP=3, FP=0, TN=129, FN=0 (Precision=100%, Recall=100%, FPR=0.00%)
-    - `CG-RULE-003`: TP=5, FP=0, TN=127, FN=0 (Precision=100%, Recall=100%, FPR=0.00%)
+- **Evaluation Corpora (Datasets 1 and 2):**
+  - **Dataset 2 (Milestone Rerun, 132 events at `b8f70f5`):**
+    - Benign Developer Workloads (120 events): Git init/add/commit/diff/log/status, GCC compilation toolchain, container queries.
+    - Attack Simulations (12 events): Breakout utilities (`nsenter`, `unshare`, `chroot`, `modprobe`), writable directory executions (`/tmp`, `/dev/shm`, `/var/tmp`), container shell executions (`/bin/sh`).
+    - Results:
+      - `CG-RULE-001`: TP=4, FP=0, TN=128, FN=0 (Precision=100%, Recall=100%, FPR=0.00%)
+      - `CG-RULE-002`: TP=3, FP=0, TN=129, FN=0 (Precision=100%, Recall=100%, FPR=0.00%)
+      - `CG-RULE-003`: TP=5, FP=0, TN=127, FN=0 (Precision=100%, Recall=100%, FPR=0.00%)
+  - **Dataset 1 (Initial Evaluation, 133 events at `7c56b1e`):**
+    - Included the 132 scripted operations plus 1 ambient host IDE invocation (`/usr/bin/git`, `TGID: 16615`, `ParentTGID: 1016`, comm `language_server`, cgroup `22`) captured during shutdown drain.
+    - Ground truth: Benign background IDE activity. ContainerGuard attribution: Left as `UNRESOLVED` (cgroup 22 unmapped).
+    - Result: No alert emitted; scored as +1 True Negative across all rules (TN: 129, 130, 128; Precision=100%, FPR=0.00%).
   - Note on Claims: Results represent empirical metrics on the evaluation corpus; universal zero false-positive claims across all production environments are not made.
 
 ### 3.5 Performance Methodology & Latency Characterization
@@ -88,7 +93,7 @@ $$\text{Kernel Hook Invocations} = \text{Ring Buffer Submissions} + \text{Ring B
   - Monitored (ContainerGuard) Time: 0.4520s (4,424.29 ev/s)
   - Execution Time Overhead: **+5.95%**
   - Throughput Impact: **-5.61%**
-  - Amortized Workload Wall-Clock Delta / Event: **12.68 microseconds** (includes process fork, execution, and exit; does not isolate pure kernel syscall entry-to-exit latency).
+  - Amortized Workload Wall-Clock Delta / Event: **12.68 microseconds** from raw unrounded timestamps ($0.02536\text{ s} / 2000$), or **12.65 microseconds** when evaluated with 4-decimal rounded values ($0.0253\text{ s} / 2000$). Note: Includes process fork, execution, and exit; does not isolate pure kernel syscall entry-to-exit latency.
   - Daemon CPU Utilization: **0.75%** (Peak: 0.90%)
   - Daemon Resident Memory (RSS): **6.04 MiB**
 

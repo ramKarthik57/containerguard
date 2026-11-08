@@ -12,7 +12,7 @@ To compile eBPF bytecode, build the Go daemon, and execute validation workloads,
 
 | Component | Minimum Version | Validated Version | Required Capabilities / Purpose |
 | :--- | :--- | :--- | :--- |
-| **Linux Kernel** | $\ge 6.1$ | `6.18.33.1` | Kernel BTF (`/sys/kernel/btf/vmlinux`), cgroup v2 unified hierarchy, BPF ring buffer support (`BPF_MAP_TYPE_RINGBUF`) |
+| **Linux Kernel** | Modern 6.x (theoretical $\ge 5.8$) | `6.18.33.1` (WSL2) | Kernel BTF (`/sys/kernel/btf/vmlinux`), cgroup v2 unified hierarchy, BPF ring buffer support (`BPF_MAP_TYPE_RINGBUF`). *Note: Validated on 6.18.33.1; compatibility across other 6.x releases is not independently verified.* |
 | **Clang / LLVM** | $\ge 14.0$ | `21.1.8` | BPF target compiler (`clang -target bpf`) with CO-RE debug generation (`-g`) |
 | **Go Toolchain** | $\ge 1.26.8$ | `1.26.8` | CGO-free userspace daemon compilation (per `go.mod` directive) |
 | **Docker Engine** | $\ge 24.0$ | `29.9.3` | Container discovery and cgroup inode reconciliation (`/var/run/docker.sock`) |

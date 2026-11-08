@@ -52,7 +52,10 @@ In Dataset 1, a single extra event was captured during the daemon shutdown drain
 }
 ```
 - **Process Lineage & Context:** Parent process (`ParentTGID: 1016`, `StartTimeNS: 17478663146`, comm `language_server`) represents background IDE workspace polling in the WSL2 host environment.
-- **Classification:** Evaluated as a **benign host execution**. It did not match breakout binaries, was executed from `/usr/bin/`, and did not execute inside a container cgroup. It contributed $+1$ True Negative to each of the three rules in Dataset 1, with zero false positives.
+- **Classification & Attribution Distinction:**
+  - **Manual Benchmark Ground Truth:** Benign ambient IDE-associated activity executing in the host environment.
+  - **ContainerGuard Telemetry Attribution:** Left strictly as `UNRESOLVED` (`attribution_state: "UNRESOLVED"`), because cgroup 22 did not match any active container in Docker's inventory or the seeded host root cgroup.
+  - **Fail-Safe Behavior in Action:** Rather than defaulting unknown cgroups to host authority, ContainerGuard preserved the `UNRESOLVED` classification. Because `/usr/bin/git` matches no container breakout patterns (`CG-RULE-001`), is not in volatile writable mounts (`CG-RULE-002`), and is not a container shell interpreter (`CG-RULE-003`), no alert was generated. With respect to the container attack evaluation ground truth, this benign background execution was correctly scored as a True Negative (+1 TN across each rule), preserving 100% precision and 0 false positives.
 - **Milestone Rerun (Dataset 2):** Daemon shutdown synchronized immediately prior to the language server's next polling interval, resulting in exactly the 132 scripted operations.
 
 ---
