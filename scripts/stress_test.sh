@@ -137,6 +137,17 @@ elapsed = float("$ELAPSED")
 delivery_rate = (received / hooks * 100.0) if hooks > 0 else 0.0
 throughput = hooks / elapsed if elapsed > 0 else 0.0
 
+# Critical Invariant Verification:
+# 1. Hook Invocations = Successful Submissions + Reservation Failures
+if hooks != (submits + drops):
+    print(f"\n[!] INVARIANT VIOLATION: Hooks ({hooks}) != Submits ({submits}) + Drops ({drops})")
+    sys.exit(1)
+
+# 2. Decoded records must never exceed submitted records
+if decoded > submits:
+    print(f"\n[!] BENCHMARK INVALIDATED: Decoded records ({decoded}) > submissions ({submits})!")
+    sys.exit(1)
+
 print("=================================================================")
 print(" STRESS TEST EMPIRICAL EVALUATION SUMMARY")
 print("=================================================================")

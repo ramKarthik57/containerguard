@@ -65,4 +65,22 @@ func TestDetectionRules(t *testing.T) {
 	if alerts[0].RuleID != "CG-RULE-002" {
 		t.Errorf("expected rule CG-RULE-002, got %s", alerts[0].RuleID)
 	}
+
+	// 4. Container executing /bin/sh triggers CG-RULE-003
+	shEv := &telemetry.SecurityEvent{
+		State:         telemetry.AttributionResolved,
+		Filename:      "/bin/sh",
+		Comm:          "sh",
+		SeqNum:        4,
+		CapturedAt:    time.Now(),
+		ContainerID:   "cont-target",
+		ContainerName: "target-container",
+	}
+	alerts = engine.Evaluate(shEv)
+	if len(alerts) != 1 {
+		t.Fatalf("expected 1 alert for /bin/sh execution, got %d", len(alerts))
+	}
+	if alerts[0].RuleID != "CG-RULE-003" {
+		t.Errorf("expected rule CG-RULE-003, got %s", alerts[0].RuleID)
+	}
 }

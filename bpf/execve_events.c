@@ -19,6 +19,7 @@
 #define CG_FLAG_COMMITTED_EXEC              (1 << 6)
 #define CG_FLAG_EXEC_FAILED                 (1 << 7)
 #define CG_FLAG_CGROUP_MIGRATED             (1 << 8)
+#define CG_FLAG_SETUID_EXEC                 (1 << 9)
 
 #define CG_AT_EMPTY_PATH                    0x1000
 #define CG_AT_FDCWD                         (-100)
@@ -42,7 +43,7 @@ struct exec_event {
     __s32 dfd;                  /* Directory file descriptor for execveat (-100 for AT_FDCWD) (offset 72) */
     __u32 at_flags;             /* Flags for execveat (e.g. AT_EMPTY_PATH = 0x1000) (offset 76) */
     __s32 exit_code;            /* Syscall return code (0 for success, negative errno on failure) (offset 80) */
-    __u32 pad;                  /* 64-bit alignment pad (offset 84) */
+    __u32 euid;                 /* Effective UID after execution (offset 84) */
 
     char comm[16];              /* Command name (offset 88) */
     char filename[256];         /* Executable pathname (offset 104) */
@@ -357,10 +358,16 @@ int cg_sched_process_exec(struct trace_event_raw_sched_process_exec *ctx)
     event->gid = att->gid;
     event->flags = att->flags | CG_FLAG_COMMITTED_EXEC;
 
+    struct task_struct *cur_task = (struct task_struct *)bpf_get_current_task();
+    __u32 euid = BPF_CORE_READ(cur_task, cred, euid.val);
+    event->euid = euid;
+    if (euid != event->uid) {
+        event->flags |= CG_FLAG_SETUID_EXEC;
+    }
+
     event->dfd = att->dfd;
     event->at_flags = att->at_flags;
     event->exit_code = 0;
-    event->pad = 0;
 
     /* Get newly executed binary comm */
     bpf_get_current_comm(event->comm, sizeof(event->comm));
@@ -428,7 +435,7 @@ static __always_inline int handle_exec_exit(__u64 pid_tgid, long ret)
     event->dfd = att->dfd;
     event->at_flags = att->at_flags;
     event->exit_code = (__s32)ret;
-    event->pad = 0;
+    event->euid = att->uid;
 
     __builtin_memcpy(event->comm, att->comm, sizeof(event->comm));
     __builtin_memcpy(event->filename, att->filename, sizeof(event->filename));

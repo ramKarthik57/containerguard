@@ -175,7 +175,8 @@ report = {
     "overhead_analysis": {
         "execution_time_overhead_pct": round(overhead_time_pct, 2),
         "throughput_impact_pct": round(throughput_delta_pct, 2),
-        "latency_per_event_us": round(((duration_mon - duration_base) / events_count) * 1e6, 2)
+        "workload_wallclock_delta_per_event_us": round(((duration_mon - duration_base) / events_count) * 1e6, 2),
+        "methodology_note": "Amortized workload wall-clock time difference per event across concurrent process lifecycles. Does not isolate pure kernel syscall entry-to-exit latency."
     },
     "telemetry_conservation": {
         "kernel_hook_calls": accounting.get("kernel_hook_invocations", 0),
@@ -185,6 +186,19 @@ report = {
         "delivery_rate_pct": round((accounting.get("userspace_records_decoded", 0) / accounting.get("kernel_ringbuf_submitted", 1)) * 100.0, 4) if accounting.get("kernel_ringbuf_submitted", 0) > 0 else 100.0
     }
 }
+
+hook_calls = accounting.get("kernel_hook_invocations", 0)
+submitted = accounting.get("kernel_ringbuf_submitted", 0)
+drops = accounting.get("kernel_ringbuf_reserve_drops", 0)
+decoded = accounting.get("userspace_records_decoded", 0)
+
+if hook_calls != (submitted + drops):
+    print(f"\n[!] INVARIANT VIOLATION: Hooks ({hook_calls}) != Submissions ({submitted}) + Drops ({drops})")
+    import sys; sys.exit(1)
+
+if decoded > submitted:
+    print(f"\n[!] BENCHMARK INVALIDATED: Decoded ({decoded}) > Submissions ({submitted})!")
+    import sys; sys.exit(1)
 
 with open(report_path, "w") as f:
     json.dump(report, f, indent=2)
@@ -198,7 +212,7 @@ print(f" Monitored (ContainerGuard):    {duration_mon:.4f}s ({tp_mon:.2f} events
 print("-" * 65)
 print(f" Execution Time Overhead:       {overhead_time_pct:+.2f}%")
 print(f" Throughput Impact:             {throughput_delta_pct:+.2f}%")
-print(f" Marginal Latency per Event:    {report['overhead_analysis']['latency_per_event_us']:.2f} microseconds")
+print(f" Workload Wall-Clock Delta / Ev:{report['overhead_analysis']['workload_wallclock_delta_per_event_us']:.2f} microseconds (amortized process lifecycle)")
 print("-" * 65)
 print(f" Daemon CPU Utilization (Avg):  {avg_cpu:.2f}% (Peak: {peak_cpu:.2f}%)")
 print(f" Daemon RSS Memory (Avg):       {avg_rss:.2f} MiB (Peak: {peak_rss:.2f} MiB)")

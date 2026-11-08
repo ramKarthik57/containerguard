@@ -16,17 +16,17 @@ func TestDecodeRawExecEventWithLeaderAndFlags(t *testing.T) {
 	binary.LittleEndian.PutUint64(buf[32:40], 500000)  // StartTimeNS (leader)
 	binary.LittleEndian.PutUint64(buf[40:48], 400000)  // ParentStartTimeNS (parent leader)
 
-	binary.LittleEndian.PutUint32(buf[48:52], 105)                                                   // TID (worker subthread calling execve)
-	binary.LittleEndian.PutUint32(buf[52:56], 100)                                                   // TGID (thread-group leader process ID)
-	binary.LittleEndian.PutUint32(buf[56:60], 1)                                                     // ParentTGID
-	binary.LittleEndian.PutUint32(buf[60:64], 1000)                                                  // UID
-	binary.LittleEndian.PutUint32(buf[64:68], 1000)                                                  // GID
-	binary.LittleEndian.PutUint32(buf[68:72], FlagStartTimeEstimated|FlagExecveat|FlagCommittedExec) // Flags
+	binary.LittleEndian.PutUint32(buf[48:52], 105)                                                                  // TID (worker subthread calling execve)
+	binary.LittleEndian.PutUint32(buf[52:56], 100)                                                                  // TGID (thread-group leader process ID)
+	binary.LittleEndian.PutUint32(buf[56:60], 1)                                                                    // ParentTGID
+	binary.LittleEndian.PutUint32(buf[60:64], 1000)                                                                 // UID
+	binary.LittleEndian.PutUint32(buf[64:68], 1000)                                                                 // GID
+	binary.LittleEndian.PutUint32(buf[68:72], FlagStartTimeEstimated|FlagExecveat|FlagCommittedExec|FlagSetuidExec) // Flags
 
 	binary.LittleEndian.PutUint32(buf[72:76], uint32(5)) // Dfd
 	binary.LittleEndian.PutUint32(buf[76:80], 0x1000)    // AtFlags (AT_EMPTY_PATH)
 	binary.LittleEndian.PutUint32(buf[80:84], 0)         // ExitCode
-	binary.LittleEndian.PutUint32(buf[84:88], 0)         // Pad
+	binary.LittleEndian.PutUint32(buf[84:88], 0)         // EUID (effective UID 0 - root)
 
 	copy(buf[88:104], "worker_thread\x00")
 	copy(buf[104:360], "/usr/local/bin/worker\x00")
@@ -49,13 +49,16 @@ func TestDecodeRawExecEventWithLeaderAndFlags(t *testing.T) {
 	if raw.Dfd != 5 {
 		t.Errorf("expected Dfd=5, got %d", raw.Dfd)
 	}
+	if raw.EUID != 0 {
+		t.Errorf("expected EUID=0, got %d", raw.EUID)
+	}
 
 	ev := NewSecurityEvent(raw)
 	if !ev.StartTimeEstimated {
 		t.Errorf("expected StartTimeEstimated to be true from flags")
 	}
-	if !ev.Execveat || !ev.Committed {
-		t.Errorf("expected Execveat and Committed to be true from flags")
+	if !ev.Execveat || !ev.Committed || !ev.SetuidExec {
+		t.Errorf("expected Execveat, Committed, and SetuidExec to be true from flags")
 	}
 	if ev.Key.TGID != 100 || ev.Key.StartTimeNS != 500000 {
 		t.Errorf("process key should reflect process-level identity: %+v", ev.Key)

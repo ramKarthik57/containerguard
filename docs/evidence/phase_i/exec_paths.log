@@ -1,48 +1,48 @@
-2026/11/08 06:45:01 =================================================================
-2026/11/08 06:45:01  ContainerGuard: Resilient eBPF Runtime Intrusion Detection
-2026/11/08 06:45:01 =================================================================
-2026/11/08 06:45:01 [collector] configured Ring Buffer capacity: 16384 KiB (16777216 bytes)
-2026/11/08 06:45:01 [resolver] inventory reconciled: 2 active containers
-2026/11/08 06:45:01 [resolver] Docker lifecycle event monitor running
-2026/11/08 06:45:01 [collector] attached tracepoint syscalls/sys_enter_execve -> cg_execve_events
-2026/11/08 06:45:01 [collector] attached tracepoint syscalls/sys_enter_execveat -> cg_execveat_events
-2026/11/08 06:45:01 [collector] attached tracepoint sched/sched_process_exec -> cg_sched_process_exec
-2026/11/08 06:45:01 [collector] attached tracepoint syscalls/sys_exit_execve -> cg_execve_exit
-2026/11/08 06:45:01 [collector] attached tracepoint syscalls/sys_exit_execveat -> cg_execveat_exit
-2026/11/08 06:45:01 [collector] eBPF telemetry engine active: /home/ram/ebpf-smoke-test/bpf/execve_events.o (5 tracepoints attached)
-2026/11/08 06:45:01 [containerguard] Telemetry pipeline active. Awaiting container events...
-2026/11/08 06:45:02 [METRICS] {"timestamp":"2026-11-08T06:45:02.579486956Z","kernel_hook_invocations":0,"kernel_ringbuf_reserve_drops":0,"kernel_ringbuf_submitted":0,"kernel_cgroup_map_fails":0,"userspace_records_received":28,"userspace_records_decoded":28,"userspace_decode_failures":0,"attribution_pending_transitions":28,"current_pending_queue_depth":28,"peak_pending_queue_depth":28,"attribution_resolved":0,"attribution_unresolved":0,"attribution_stale_mapping":0,"attribution_host_confirmed":0,"userspace_queue_overflows":0,"sequence_gaps_detected":0,"reordered_events":0,"events_processed":0,"processing_failures":0,"kernel_drop_rate_pct":0,"userspace_loss_count":0}
-TIME=2026-11-08T06:45:02.594439122Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=29 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=15840 | TID=15840 | PPID=15831 | START=22378723530211 | COMM=6 | EXEC=/proc/self/fd/6
-TIME=2026-11-08T06:45:02.617488446Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=30 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=15843 | TID=15843 | PPID=15831 | START=22378725529682 | COMM=date | EXEC=/bin/date
-TIME=2026-11-08T06:45:02.657064943Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=35 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=15874 | TID=15874 | PPID=15864 | START=22378786072882 | COMM=6 | EXEC=/proc/self/fd/6
-TIME=2026-11-08T06:45:02.680222334Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=36 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=15876 | TID=15876 | PPID=15864 | START=22378788322038 | COMM=echo | EXEC=/bin/echo
-TIME=2026-11-08T06:45:02.721940986Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=41 | CONTAINER=cg-test-b-event-test | CID=2b604b614c95 | CGROUP=5960 (PCG=2714) | TGID=15905 | TID=15905 | PPID=15896 | START=22378851025453 | COMM=6 | EXEC=/proc/self/fd/6
-TIME=2026-11-08T06:45:02.74618054Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=42 | CONTAINER=cg-test-b-event-test | CID=2b604b614c95 | CGROUP=5960 (PCG=2714) | TGID=15908 | TID=15908 | PPID=15896 | START=22378853231187 | COMM=uname | EXEC=/bin/uname
-2026/11/08 06:45:03 [METRICS] {"timestamp":"2026-11-08T06:45:03.579634096Z","kernel_hook_invocations":69,"kernel_ringbuf_reserve_drops":0,"kernel_ringbuf_submitted":69,"kernel_cgroup_map_fails":0,"userspace_records_received":69,"userspace_records_decoded":69,"userspace_decode_failures":0,"attribution_pending_transitions":63,"current_pending_queue_depth":63,"peak_pending_queue_depth":63,"attribution_resolved":6,"attribution_unresolved":0,"attribution_stale_mapping":0,"attribution_host_confirmed":0,"userspace_queue_overflows":0,"sequence_gaps_detected":0,"reordered_events":0,"events_processed":6,"processing_failures":0,"kernel_drop_rate_pct":0,"userspace_loss_count":0}
-2026/11/08 06:45:03 [containerguard] Shutdown signal received, terminating collector...
-2026/11/08 06:45:03 [collector] ring buffer consumer stopped gracefully
+2026/11/08 07:33:54 =================================================================
+2026/11/08 07:33:54  ContainerGuard: Resilient eBPF Runtime Intrusion Detection
+2026/11/08 07:33:54 =================================================================
+2026/11/08 07:33:54 [collector] configured Ring Buffer capacity: 16384 KiB (16777216 bytes)
+2026/11/08 07:33:54 [resolver] inventory reconciled: 2 active containers
+2026/11/08 07:33:54 [resolver] Docker lifecycle event monitor running
+2026/11/08 07:33:54 [collector] attached tracepoint syscalls/sys_enter_execve -> cg_execve_events
+2026/11/08 07:33:54 [collector] attached tracepoint syscalls/sys_enter_execveat -> cg_execveat_events
+2026/11/08 07:33:54 [collector] attached tracepoint sched/sched_process_exec -> cg_sched_process_exec
+2026/11/08 07:33:54 [collector] attached tracepoint syscalls/sys_exit_execve -> cg_execve_exit
+2026/11/08 07:33:54 [collector] attached tracepoint syscalls/sys_exit_execveat -> cg_execveat_exit
+2026/11/08 07:33:54 [collector] eBPF telemetry engine active: /home/ram/ebpf-smoke-test/bpf/execve_events.o (5 tracepoints attached)
+2026/11/08 07:33:54 [containerguard] Telemetry pipeline active. Awaiting container events...
+2026/11/08 07:33:55 [METRICS] {"timestamp":"2026-11-08T07:33:55.215512087Z","kernel_hook_invocations":0,"kernel_ringbuf_reserve_drops":0,"kernel_ringbuf_submitted":0,"kernel_cgroup_map_fails":0,"userspace_records_received":43,"userspace_records_decoded":43,"userspace_decode_failures":0,"attribution_pending_transitions":43,"current_pending_queue_depth":43,"peak_pending_queue_depth":43,"attribution_resolved":0,"attribution_unresolved":0,"attribution_stale_mapping":0,"attribution_host_confirmed":0,"userspace_queue_overflows":0,"sequence_gaps_detected":0,"reordered_events":0,"events_processed":0,"processing_failures":0,"kernel_drop_rate_pct":0,"userspace_loss_count":0}
+TIME=2026-11-08T07:33:55.403692041Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=56 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=903 | TID=903 | PPID=892 | START=25311532750753 | COMM=6 | EXEC=/proc/self/fd/6
+TIME=2026-11-08T07:33:55.424997875Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=57 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=905 | TID=905 | PPID=892 | START=25311534629108 | COMM=date | EXEC=/bin/date
+TIME=2026-11-08T07:33:55.461643769Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=62 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=936 | TID=936 | PPID=926 | START=25311590755102 | COMM=6 | EXEC=/proc/self/fd/6
+TIME=2026-11-08T07:33:55.482984304Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=63 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5400 (PCG=2714) | TGID=938 | TID=938 | PPID=926 | START=25311592414141 | COMM=echo | EXEC=/bin/echo
+TIME=2026-11-08T07:33:55.520304794Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=68 | CONTAINER=cg-test-b-event-test | CID=2b604b614c95 | CGROUP=5960 (PCG=2714) | TGID=970 | TID=970 | PPID=960 | START=25311649380493 | COMM=6 | EXEC=/proc/self/fd/6
+TIME=2026-11-08T07:33:55.54171409Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=69 | CONTAINER=cg-test-b-event-test | CID=2b604b614c95 | CGROUP=5960 (PCG=2714) | TGID=973 | TID=973 | PPID=960 | START=25311651028240 | COMM=uname | EXEC=/bin/uname
+2026/11/08 07:33:56 [METRICS] {"timestamp":"2026-11-08T07:33:56.215862299Z","kernel_hook_invocations":86,"kernel_ringbuf_reserve_drops":0,"kernel_ringbuf_submitted":86,"kernel_cgroup_map_fails":0,"userspace_records_received":86,"userspace_records_decoded":86,"userspace_decode_failures":0,"attribution_pending_transitions":80,"current_pending_queue_depth":80,"peak_pending_queue_depth":80,"attribution_resolved":6,"attribution_unresolved":0,"attribution_stale_mapping":0,"attribution_host_confirmed":0,"userspace_queue_overflows":0,"sequence_gaps_detected":0,"reordered_events":0,"events_processed":6,"processing_failures":0,"kernel_drop_rate_pct":0,"userspace_loss_count":0}
+2026/11/08 07:33:56 [containerguard] Shutdown signal received, terminating collector...
+2026/11/08 07:33:56 [collector] ring buffer consumer stopped gracefully
 
 === FINAL TELEMETRY INTEGRITY ACCOUNTING REPORT ===
 {
-  "timestamp": "2026-11-08T06:45:03.855571952Z",
-  "kernel_hook_invocations": 72,
+  "timestamp": "2026-11-08T07:33:56.642834905Z",
+  "kernel_hook_invocations": 89,
   "kernel_ringbuf_reserve_drops": 0,
-  "kernel_ringbuf_submitted": 72,
+  "kernel_ringbuf_submitted": 89,
   "kernel_cgroup_map_fails": 0,
-  "userspace_records_received": 72,
-  "userspace_records_decoded": 72,
+  "userspace_records_received": 89,
+  "userspace_records_decoded": 89,
   "userspace_decode_failures": 0,
-  "attribution_pending_transitions": 66,
+  "attribution_pending_transitions": 83,
   "current_pending_queue_depth": 0,
-  "peak_pending_queue_depth": 66,
+  "peak_pending_queue_depth": 83,
   "attribution_resolved": 6,
-  "attribution_unresolved": 66,
+  "attribution_unresolved": 83,
   "attribution_stale_mapping": 0,
   "attribution_host_confirmed": 0,
   "userspace_queue_overflows": 0,
   "sequence_gaps_detected": 0,
   "reordered_events": 0,
-  "events_processed": 72,
+  "events_processed": 89,
   "processing_failures": 0,
   "kernel_drop_rate_pct": 0,
   "userspace_loss_count": 0

@@ -81,8 +81,12 @@ echo "  -> Comm truncation (16 chars)..."
 echo "  -> Static ELF execution..."
 /tmp/cg_static_test || true
 
-echo "  -> Setuid binary execution..."
-/usr/bin/sudo --version > /dev/null || true
+echo "  -> Harmless setuid binary execution (unprivileged -> EUID 0 transition)..."
+gcc -O2 "${ROOT_DIR}/cmd/test_exec_paths/setuid_test.c" -o "${ROOT_DIR}/bin/cg_setuid_test"
+sudo chown root:root "${ROOT_DIR}/bin/cg_setuid_test"
+sudo chmod 4755 "${ROOT_DIR}/bin/cg_setuid_test"
+# Execute as unprivileged user 'ram' (demonstrating genuine ruid=1000 -> euid=0 transition)
+"${ROOT_DIR}/bin/cg_setuid_test" || true
 
 # 3. Containerized executions
 echo "[3/6] Dispatching containerized executions..."
@@ -173,6 +177,7 @@ has_memfd = any(e.get("at_empty_path") for e in events)
 has_enoent = any(e.get("failed") and e.get("exit_code") == -2 for e in events)
 has_eacces = any(e.get("failed") and e.get("exit_code") == -13 for e in events)
 has_container_event = any(e.get("attribution_state") == "RESOLVED" for e in events)
+has_setuid_transition = any("cg_setuid_test" in e.get("filename", "") and e.get("uid") != e.get("euid") and e.get("setuid_exec") and e.get("euid") == 0 for e in events)
 
 hook_calls = accounting.get("kernel_hook_invocations", 0)
 submitted = accounting.get("kernel_ringbuf_submitted", 0)
@@ -180,6 +185,14 @@ drops = accounting.get("kernel_ringbuf_reserve_drops", 0)
 decoded = accounting.get("userspace_records_decoded", 0)
 
 conservation_valid = (hook_calls == submitted + drops)
+if not conservation_valid:
+    print(f"\n[!] INVARIANT VIOLATION: Hooks ({hook_calls}) != Submissions ({submitted}) + Drops ({drops})")
+    import sys; sys.exit(1)
+
+if decoded > submitted:
+    print(f"\n[!] BENCHMARK INVALIDATED: Decoded ({decoded}) > Submissions ({submitted})!")
+    import sys; sys.exit(1)
+
 delivery_rate_pct = (decoded / submitted * 100.0) if submitted > 0 else 100.0
 
 report = {
@@ -200,6 +213,7 @@ report = {
         "shebang_script": has_shebang,
         "symlink_traversal": has_symlink,
         "static_elf_binary": has_static_elf,
+        "setuid_euid_transition": has_setuid_transition,
         "failed_exec_enoent": has_enoent,
         "failed_exec_eacces": has_eacces,
         "container_workload_attribution": has_container_event,

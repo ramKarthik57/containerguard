@@ -191,8 +191,19 @@ if os.path.exists("$RESOURCE_LOG"):
 
 target_tput = target_total / elapsed if elapsed > 0 else 0.0
 observed_tput = hooks / elapsed if elapsed > 0 else 0.0
-delivery_rate = min(100.0, (decoded / submits * 100.0)) if submits > 0 else 0.0
+delivery_rate = (decoded / submits * 100.0) if submits > 0 else 0.0
 kernel_drop_rate = (drops / hooks * 100.0) if hooks > 0 else 0.0
+
+# Critical Invariant Verification:
+# 1. Hook Invocations = Successful Submissions + Reservation Failures
+if hooks != (submits + drops):
+    print(f"\n[!] INVARIANT VIOLATION: Hooks ({hooks}) != Submits ({submits}) + Drops ({drops})")
+    sys.exit(1)
+
+# 2. Decoded records must never exceed submitted records
+if decoded > submits:
+    print(f"\n[!] BENCHMARK INVALIDATED: Decoded records ({decoded}) > submissions ({submits})!")
+    sys.exit(1)
 
 print("=================================================================")
 print(" SATURATION BENCHMARK EMPIRICAL REPORT: $LABEL")

@@ -1,7 +1,7 @@
 {
   "corpus_summary": {
-    "total_events": 133,
-    "benign_developer_events": 121,
+    "total_events": 132,
+    "benign_developer_events": 120,
     "attack_simulation_events": 12,
     "total_alerts_emitted": 12
   },
@@ -11,7 +11,7 @@
       "confusion_matrix": {
         "TP": 4,
         "FP": 0,
-        "TN": 129,
+        "TN": 128,
         "FN": 0
       },
       "precision_pct": 100.0,
@@ -24,7 +24,7 @@
       "confusion_matrix": {
         "TP": 3,
         "FP": 0,
-        "TN": 130,
+        "TN": 129,
         "FN": 0
       },
       "precision_pct": 100.0,
@@ -37,7 +37,7 @@
       "confusion_matrix": {
         "TP": 5,
         "FP": 0,
-        "TN": 128,
+        "TN": 127,
         "FN": 0
       },
       "precision_pct": 100.0,

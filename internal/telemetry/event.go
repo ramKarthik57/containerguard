@@ -31,6 +31,7 @@ const (
 	FlagCommittedExec            uint32 = 1 << 6
 	FlagExecFailed               uint32 = 1 << 7
 	FlagCgroupMigrated           uint32 = 1 << 8
+	FlagSetuidExec               uint32 = 1 << 9
 )
 
 // ProcessInstanceKey represents the immutable kernel process identity (TGID + start time).
@@ -85,7 +86,7 @@ type RawExecEvent struct {
 	Dfd      int32
 	AtFlags  uint32
 	ExitCode int32
-	Pad      uint32
+	EUID     uint32
 
 	Comm     [16]byte
 	Filename [256]byte
@@ -115,10 +116,12 @@ type SecurityEvent struct {
 	Committed                bool             `json:"committed"`
 	Failed                   bool             `json:"failed"`
 	CgroupMigrated           bool             `json:"cgroup_migrated"`
+	SetuidExec               bool             `json:"setuid_exec"`
 	Dfd                      int32            `json:"dfd"`
 	AtFlags                  uint32           `json:"at_flags"`
 	ExitCode                 int32            `json:"exit_code"`
 	UID                      uint32           `json:"uid"`
+	EUID                     uint32           `json:"euid"`
 	GID                      uint32           `json:"gid"`
 	Comm                     string           `json:"comm"`
 	Filename                 string           `json:"filename"`
@@ -153,7 +156,7 @@ func DecodeRawExecEvent(buf []byte, target *RawExecEvent) error {
 	target.Dfd = int32(binary.LittleEndian.Uint32(buf[72:76]))
 	target.AtFlags = binary.LittleEndian.Uint32(buf[76:80])
 	target.ExitCode = int32(binary.LittleEndian.Uint32(buf[80:84]))
-	target.Pad = binary.LittleEndian.Uint32(buf[84:88])
+	target.EUID = binary.LittleEndian.Uint32(buf[84:88])
 
 	copy(target.Comm[:], buf[88:104])
 	copy(target.Filename[:], buf[104:360])
@@ -185,6 +188,7 @@ func NewSecurityEvent(raw RawExecEvent) *SecurityEvent {
 	committed := (raw.Flags & FlagCommittedExec) != 0
 	failed := (raw.Flags & FlagExecFailed) != 0
 	cgroupMigrated := (raw.Flags & FlagCgroupMigrated) != 0
+	setuidExec := (raw.Flags & FlagSetuidExec) != 0
 
 	key := ProcessKey{
 		CgroupID:    raw.CgroupID,
@@ -226,10 +230,12 @@ func NewSecurityEvent(raw RawExecEvent) *SecurityEvent {
 		Committed:                committed,
 		Failed:                   failed,
 		CgroupMigrated:           cgroupMigrated,
+		SetuidExec:               setuidExec,
 		Dfd:                      raw.Dfd,
 		AtFlags:                  raw.AtFlags,
 		ExitCode:                 raw.ExitCode,
 		UID:                      raw.UID,
+		EUID:                     raw.EUID,
 		GID:                      raw.GID,
 		Comm:                     comm,
 		Filename:                 filename,

@@ -313,3 +313,23 @@
   - `docs/DETECTION_VALIDATION.md`
   - `docs/OVERHEAD_EVALUATION.md`
   - Evidence archived in `docs/evidence/phase_i/`.
+
+### Entry 012 - 2026-11-08: 50% Milestone Acceptance Gate and Mandatory Development Stop
+- **Status:** 50% Milestone Gate PASSED. All Development Frozen on Standby.
+- **Milestone Release Label:** `ContainerGuard-50-Percent-Verified-Milestone`
+- **Actions & Audits Completed:**
+  1. *Scope Freeze Enforced:* Scope frozen strictly to the 16 milestone components. No Phase II features implemented.
+  2. *Setuid EUID Transition Verified:* Authored and compiled `cmd/test_exec_paths/setuid_test.c` into `bin/cg_setuid_test` (`chown root:root; chmod 4755`). Executed from unprivileged user `ram` (UID 1000). Successfully demonstrated live kernel transition from real UID 1000 to effective UID 0, captured via `BPF_CORE_READ(cur_task, cred, euid.val)` and flagged with `CG_FLAG_SETUID_EXEC`.
+  3. *Detection Rule CG-RULE-003 Refinement:* Clarified rule scope as `ContainerShellRule` ("Shell Binary Executed Inside Container"). Documented that terminal interactivity is not evaluated in this 50% milestone, eliminating overclaiming.
+  4. *Latency Characterization Audit:* Clarified overhead metric as amortized workload wall-clock execution time difference per event across 2,000 process lifecycles (+5.95% overhead, 12.68 microseconds per event lifecycle), not an isolated kernel syscall latency measurement.
+  5. *Unclamped Invariant Verification:* Removed `min(100.0, ...)` clamping across test scripts. Enforced that any discrepancy where `decoded > submitted` immediately invalidates the benchmark. Conservation $\text{Hooks} = \text{Submissions} + \text{Drops}$ verified across all test runs.
+  6. *Full Regression Executed:*
+     - Unit & Race Tests: `go test -race -v ./...` (All PASSED, 0 data races).
+     - Live Integration: `live_integration_test.sh` (105 events, 3 alerts, 100% delivery, PASSED).
+     - Stress Benchmark: `stress_test.sh 1000` (1,025 events, 100% delivery, PASSED).
+     - Saturation & Loss Test: `saturation_test.sh` (351 drops accounted, exact conservation, PASSED).
+     - Execution Paths: `execution_path_test.sh` (All 12 paths & setuid transition PASSED).
+     - Detection Benchmark: `detection_benchmark.sh` (100% precision & recall, 0 false positives, PASSED).
+     - Overhead Benchmark: `overhead_benchmark.sh` (+5.95% overhead, 6.04 MiB RSS, PASSED).
+  7. *Milestone Documentation Produced:* Authored `docs/MILESTONE_50_PERCENT_ACCEPTANCE_REPORT.md`.
+  8. *Mandatory Stop Condition Triggered:* System halted in clean state awaiting user instructions.

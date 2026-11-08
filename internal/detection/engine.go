@@ -141,12 +141,16 @@ func (r *WritableDirExecutionRule) Evaluate(event *telemetry.SecurityEvent, trac
 	return nil
 }
 
-// InteractiveShellRule detects shell spawned inside a production container.
-type InteractiveShellRule struct{}
+// ContainerShellRule detects shell binaries spawned inside a production container.
+// Note: Intercepts binary path execution; terminal interactivity (pty/tty or -i) is not evaluated in 50% milestone.
+type ContainerShellRule struct{}
 
-func (r *InteractiveShellRule) ID() string { return "CG-RULE-003" }
+// InteractiveShellRule is maintained as an alias for backward compatibility.
+type InteractiveShellRule = ContainerShellRule
 
-func (r *InteractiveShellRule) Evaluate(event *telemetry.SecurityEvent, tracker *lineage.LineageTracker) *Alert {
+func (r *ContainerShellRule) ID() string { return "CG-RULE-003" }
+
+func (r *ContainerShellRule) Evaluate(event *telemetry.SecurityEvent, tracker *lineage.LineageTracker) *Alert {
 	if event.State != telemetry.AttributionResolved {
 		return nil
 	}
@@ -159,8 +163,8 @@ func (r *InteractiveShellRule) Evaluate(event *telemetry.SecurityEvent, tracker 
 			return &Alert{
 				ID:          fmt.Sprintf("ALERT-%d-%s", event.SeqNum, r.ID()),
 				RuleID:      r.ID(),
-				Title:       "Shell Spawned Inside Container",
-				Description: fmt.Sprintf("Interactive shell '%s' executed in container %s", s, event.ContainerName),
+				Title:       "Shell Binary Executed Inside Container",
+				Description: fmt.Sprintf("Shell binary '%s' executed in container %s (detects shell binary execution; terminal interactivity not evaluated)", s, event.ContainerName),
 				Severity:    SeverityMedium,
 				Timestamp:   event.CapturedAt,
 				Event:       event,
