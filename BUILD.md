@@ -134,7 +134,10 @@ The repository includes standalone automated benchmark and test runners used to 
 ### 1. Execution-Path Coverage Verification (Phase I)
 Builds test binaries and evaluates 14 execution pathways (shebang scripts, relative `execveat`, anonymous `memfd` via `AT_EMPTY_PATH`, symlinks, static binaries, setuid privilege escalation, and failed executions):
 ```bash
-sudo ./scripts/execution_path_test.sh
+# Execute directly as an unprivileged user (not with sudo). The script uses sudo
+# internally for daemon and cgroup operations, and invokes the setuid binary from
+# the caller context to test the genuine unprivileged UID 1000 -> EUID 0 transition.
+./scripts/execution_path_test.sh
 ```
 *Report Output:* [`docs/EXECUTION_PATH_COVERAGE.md`](docs/EXECUTION_PATH_COVERAGE.md)  
 *Raw Evidence:* [`docs/evidence/phase_i/exec_paths_events.jsonl`](docs/evidence/phase_i/exec_paths_events.jsonl)

@@ -18,3 +18,4 @@ Thumbs.db
 # Local scratch and environment files
 .env
 .env.*
+docs/evidence/*/runs/

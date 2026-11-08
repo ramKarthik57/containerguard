@@ -3,7 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i"
+
+# Output directory selection:
+# Default: Writes new execution evidence to a timestamped run subdirectory (e.g. docs/evidence/phase_i/runs/<run_id>)
+# to protect the committed baseline evidence in docs/evidence/phase_i/ from accidental deletion or overwriting.
+# Pass "baseline" as first argument to deliberately regenerate docs/evidence/phase_i/.
+# Alternatively, pass a custom directory path as first argument.
+if [[ "${1:-}" == "baseline" ]]; then
+    EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i"
+elif [[ -n "${1:-}" ]]; then
+    EVIDENCE_DIR="${1}"
+else
+    RUN_ID="run_$(date +%Y%m%d_%H%M%S)"
+    EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i/runs/${RUN_ID}"
+fi
 
 mkdir -p "${EVIDENCE_DIR}"
 
@@ -129,12 +142,13 @@ echo "[+] ContainerGuard stopped gracefully."
 # 6. Evaluate and compile empirical report
 echo "[6/6] Compiling Execution Path and Adversarial Telemetry Evaluation..."
 
-python3 - << 'PYEOF'
+python3 - "${EVIDENCE_DIR}" << 'PYEOF'
 import json
 import os
 import re
+import sys
 
-evidence_dir = "docs/evidence/phase_i"
+evidence_dir = sys.argv[1] if len(sys.argv) > 1 else "docs/evidence/phase_i"
 events_log = os.path.join(evidence_dir, "exec_paths_events.jsonl")
 daemon_log = os.path.join(evidence_dir, "exec_paths.log")
 report_path = os.path.join(evidence_dir, "execution_path_report.json")
@@ -169,11 +183,21 @@ committed_count = sum(1 for e in events if e.get("committed"))
 cgroup_migrated_count = sum(1 for e in events if e.get("cgroup_migrated"))
 
 # Look for specific execution path signatures
-has_standard_exec = any("/bin/true" in e.get("filename", "") for e in events)
+# Standard execve and direct syscall execve:
+# test_exec_paths dispatches separate child executions of /bin/true via libc execve and direct SYS_execve
+true_execs = [
+    e for e in events
+    if e.get("filename") == "/bin/true"
+    and not e.get("execveat")
+    and not e.get("cgroup_migrated")
+]
+has_standard_exec = len(true_execs) >= 1
+has_direct_syscall = len(true_execs) >= 2
+has_execveat_relative = any(e.get("execveat") and not e.get("at_empty_path") for e in events)
+has_memfd = any(e.get("execveat") and e.get("at_empty_path") for e in events)
 has_shebang = any("cg_test_shebang" in e.get("filename", "") for e in events)
 has_symlink = any("cg_test_symlink" in e.get("filename", "") for e in events)
 has_static_elf = any("cg_static_test" in e.get("filename", "") for e in events)
-has_memfd = any(e.get("at_empty_path") for e in events)
 has_enoent = any(e.get("failed") and e.get("exit_code") == -2 for e in events)
 has_eacces = any(e.get("failed") and e.get("exit_code") == -13 for e in events)
 has_container_event = any(e.get("attribution_state") == "RESOLVED" for e in events)
@@ -187,11 +211,11 @@ decoded = accounting.get("userspace_records_decoded", 0)
 conservation_valid = (hook_calls == submitted + drops)
 if not conservation_valid:
     print(f"\n[!] INVARIANT VIOLATION: Hooks ({hook_calls}) != Submissions ({submitted}) + Drops ({drops})")
-    import sys; sys.exit(1)
+    sys.exit(1)
 
 if decoded > submitted:
     print(f"\n[!] BENCHMARK INVALIDATED: Decoded ({decoded}) > Submissions ({submitted})!")
-    import sys; sys.exit(1)
+    sys.exit(1)
 
 delivery_rate_pct = (decoded / submitted * 100.0) if submitted > 0 else 100.0
 
@@ -207,8 +231,8 @@ report = {
     },
     "execution_path_coverage": {
         "standard_execve": has_standard_exec,
-        "direct_syscall_execve": has_standard_exec,
-        "execveat_relative": execveat_count > 0,
+        "direct_syscall_execve": has_direct_syscall,
+        "execveat_relative": has_execveat_relative,
         "execveat_at_empty_path_memfd": has_memfd,
         "shebang_script": has_shebang,
         "symlink_traversal": has_symlink,
@@ -248,6 +272,12 @@ print("-" * 65)
 print(" Execution Path Coverage:")
 for k, v in report["execution_path_coverage"].items():
     print(f"   - {k:32s}: {'PASS' if v else 'FAIL'}")
+
+# Explicit assertion check: fail execution if any execution pathway was missed
+failed_assertions = [k for k, v in report["execution_path_coverage"].items() if not v]
+if failed_assertions:
+    print(f"\n[!] EXECUTION PATH ASSERTION FAILED: Missing coverage for: {failed_assertions}")
+    sys.exit(1)
 print("-" * 65)
 print(" Adversarial Features Observed:")
 print(f"   - execveat calls:               {execveat_count}")

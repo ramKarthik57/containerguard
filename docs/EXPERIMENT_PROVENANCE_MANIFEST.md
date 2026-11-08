@@ -30,12 +30,12 @@ The official compiled binaries corresponding to the **ContainerGuard 50% Verifie
 | :--- | :--- | :--- |
 | **Go Control-Plane Daemon** | `bin/containerguard` | `cfee0d9675b653fdd7cda2629454a4839b1fd59ede0ba43f8bcd7ce7bebc93d0` |
 | **Compiled eBPF Kernel ELF**| `bpf/execve_events.o` | `6ae519a012694f11c9ab514c1b13cafb4b8551fb8deadaf10dee817862717ef3` |
-| **Test Execution Harness**  | `bin/test_exec_paths` | `5cbf23bf62d26f633c39665f84d6b5e0dd22a61c7eb16773a4b64fcad0b0dbe4` |
-| **Setuid Test Executable**   | `bin/cg_setuid_test`  | Setuid root binary (`chmod 4755`); compiled from `cmd/test_exec_paths/setuid_test.c` |
+| **Test Execution Harness**  | `bin/test_exec_paths` | `37890b6bbc638c6066609afbd2cc98cfcb3ca70cd996385a44e4728f1459a32f` |
+| **Setuid Test Executable**   | `bin/cg_setuid_test`  | `b11b8709bfa3e4038ecfe7705500c9733be248e168af7991ae6e170c01596a95` |
 
 *Verification Command:*
 ```bash
-sha256sum bin/containerguard bpf/execve_events.o bin/test_exec_paths
+sha256sum bin/containerguard bpf/execve_events.o bin/test_exec_paths bin/cg_setuid_test
 ```
 
 ---
@@ -47,7 +47,7 @@ sha256sum bin/containerguard bpf/execve_events.o bin/test_exec_paths
 | **EXP-1** | Baseline Container Attribution & Inode Discovery | `b8f70f5` | `sudo ./scripts/live_integration_test.sh` | 2 persistent containers (`cg-test-a`, `cg-test-b`), 1 ephemeral container, 1 host stream | [`evidence/phase_f/`](evidence/phase_f/) | 105 events captured, 0 kernel drops, 100.0% delivery, 3 alerts emitted |
 | **EXP-2** | Concurrent Workload Scaling (Phase H) | `b8f70f5` | `sudo ./scripts/stress_test.sh 1000`<br/>`sudo ./scripts/stress_test.sh 5000`<br/>`sudo ./scripts/stress_test.sh 10000`<br/>`sudo ./scripts/stress_test.sh 25000` | 4 concurrent execution streams (2 persistent containers, 1 ephemeral, 1 host) with exploit injection mid-stream | [`evidence/phase_h/stress_1000/`](evidence/phase_h/stress_1000/)<br/>[`evidence/phase_h/stress_5000/`](evidence/phase_h/stress_5000/)<br/>[`evidence/phase_h/stress_10000/`](evidence/phase_h/stress_10000/)<br/>[`evidence/phase_h/stress_25000/`](evidence/phase_h/stress_25000/) | 1,040 to 25,032 events; 0 kernel drops; 0 sequence gaps; 100.0% delivery up to 1,923.0 hooks/s |
 | **EXP-3** | Controlled Buffer Saturation & Reader Backpressure (Phase H.2) | `96f36ce` | `sudo ./scripts/saturation_test.sh sat_16mb_8stream 16384 0 8 250`<br/>`sudo ./scripts/saturation_test.sh sat_bp_256kb 256 4 4 500`<br/>`sudo ./scripts/saturation_test.sh sat_bp_64kb 64 4 4 500` | 2,000 target events under 4.0-second induced userspace reader backpressure across buffer sizes (64KB, 256KB, 16MB) | [`evidence/phase_h2/suite1_capacity_8stream/`](evidence/phase_h2/suite1_capacity_8stream/)<br/>[`evidence/phase_h2/suite2_backpressure/`](evidence/phase_h2/suite2_backpressure/)<br/>[`evidence/phase_h2/original_unreconciled/`](evidence/phase_h2/original_unreconciled/) | Exact conservation: $\text{Hooks} = \text{Submissions} + \text{Drops}$. 64KB held 190 events during freeze; 256KB held 762 events (344B wire schema). Zero sequence gaps. |
-| **EXP-4** | Execution-Path Semantics & Credential Transitions (Phase I) | `b8f70f5` | `sudo ./scripts/execution_path_test.sh` | 14 execution conditions: direct syscall, relative `execveat`, anonymous `memfd`, static ELF, symlinks, setuid EUID 0 transition, failed `ENOENT`/`EACCES`, and live cgroup migration | [`evidence/phase_i/execution_path_report.json`](evidence/phase_i/execution_path_report.json)<br/>[`evidence/phase_i/exec_paths_events.jsonl`](evidence/phase_i/exec_paths_events.jsonl) | 89 total events; 87 committed (`sched_process_exec`); 2 failed (`sys_exit_execve`); 0 drops; setuid `CG_FLAG_SETUID_EXEC` verified; cgroup migration tracked |
+| **EXP-4** | Execution-Path Semantics & Credential Transitions (Phase I) | `b8f70f5` | `./scripts/execution_path_test.sh` *(invoked as unprivileged user)* | 14 execution conditions: direct syscall, relative `execveat`, anonymous `memfd`, static ELF, symlinks, setuid EUID 0 transition, failed `ENOENT`/`EACCES`, and live cgroup migration | [`evidence/phase_i/execution_path_report.json`](evidence/phase_i/execution_path_report.json)<br/>[`evidence/phase_i/exec_paths_events.jsonl`](evidence/phase_i/exec_paths_events.jsonl) | 89 total events; 87 committed (`sched_process_exec`); 2 failed (`sys_exit_execve`); 0 drops; setuid `CG_FLAG_SETUID_EXEC` verified; cgroup migration tracked |
 | **EXP-5A**| Detection Validation & False-Positive Evaluation (Phase I) | `7c56b1e` (Dataset 1)<br/>`b8f70f5` (Dataset 2) | `sudo ./scripts/detection_benchmark.sh` | Interleaved corpus: 120 benign operations (Git queries, multi-stage GCC compilation) vs 12 synthetic attack simulations | [`evidence/phase_i/detection_validation_report.json`](evidence/phase_i/detection_validation_report.json)<br/>[`evidence/phase_i/detection_alerts.jsonl`](evidence/phase_i/detection_alerts.jsonl) | Dataset 1 (133 events): TP=12, TN=387, FP=0, FN=0.<br/>Dataset 2 (132 events): TP=12, TN=384, FP=0, FN=0.<br/>100% Precision, 100% Recall on labelled suite. |
 | **EXP-5B**| Monitoring Runtime Overhead & Resource Footprint (Phase I) | `7c56b1e` (Trial 1)<br/>`b8f70f5` (Trial 2) | `sudo ./scripts/overhead_benchmark.sh` | 2,000 rapid process executions across 4 worker streams with pre-test cache drops (`drop_caches`), comparing unmonitored vs ContainerGuard monitored | [`evidence/phase_i/overhead_benchmark_report.json`](evidence/phase_i/overhead_benchmark_report.json)<br/>[`evidence/phase_i/overhead_resource_samples.csv`](evidence/phase_i/overhead_resource_samples.csv) | Trial 1 (+3.46% overhead, 7.77 µs delta/lifecycle); Trial 2 (+5.95% overhead, 12.68 µs delta/lifecycle); Descriptive mean: 4.71%; Peak RSS: 6.04 MiB |
 
@@ -78,7 +78,10 @@ go test -v -race -count=1 ./internal/...
 ### Step 3: Privileged eBPF Telemetry Reproduction (Requires Root / Interactive Sudo)
 ```bash
 # 1. Execution-Path Semantics Suite (EXP-4)
-sudo ./scripts/execution_path_test.sh
+# Note: Execute directly as an unprivileged user (not with sudo). The test harness
+# invokes sudo internally for daemon attachment, and executes the setuid binary from
+# the caller context to verify the unprivileged UID 1000 -> EUID 0 credential transition.
+./scripts/execution_path_test.sh
 
 # 2. Detection Rule Validation (EXP-5A)
 sudo ./scripts/detection_benchmark.sh
