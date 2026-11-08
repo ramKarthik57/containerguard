@@ -5,7 +5,7 @@
 [![Milestone](https://img.shields.io/badge/Milestone-50%25%20Verified%20Release-blue?style=for-the-badge)](docs/MILESTONE_50_PERCENT_ACCEPTANCE_REPORT.md)
 [![Kernel](https://img.shields.io/badge/Linux%20Kernel-6.x%2B%20(BTF%20%2B%20CO--RE)-orange?style=for-the-badge)](https://www.kernel.org/)
 [![Runtime](https://img.shields.io/badge/eBPF-Ring%20Buffer-green?style=for-the-badge)](https://docs.kernel.org/bpf/ringbuf.html)
-[![Go](https://img.shields.io/badge/Go-1.24%2B-00ADD8?style=for-the-badge&logo=go)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.26.8-00ADD8?style=for-the-badge&logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/State-FROZEN%20%26%20HALTED-red?style=for-the-badge)](#roadmap-and-development-status)
 
 ```text
@@ -14,7 +14,7 @@
 ========================================================================================================
 ```
 
-ContainerGuard is an eBPF-based runtime security and container telemetry architecture engineered to provide **unambiguous workload attribution**, **loss-aware kernel telemetry**, and **high-fidelity execution-path monitoring** for Linux container environments.
+ContainerGuard is an eBPF-based runtime security and container telemetry architecture engineered to provide **resilient container workload attribution (with explicit unresolved state handling)**, **loss-aware kernel telemetry**, and **high-fidelity execution-path monitoring** for Linux container environments.
 
 The project investigates fundamental systems security challenges in container observability:
 - **Telemetry Integrity Under Saturation:** Accounting for kernel-side buffer drops and maintaining exact mathematical conservation:
@@ -57,7 +57,7 @@ Modern container monitoring architectures commonly suffer from severe architectu
 - They default unmapped container events to host processes.
 - When high-volume execution bursts saturate kernel buffers, they drop events silently, leaving security teams unaware that telemetry was lost.
 
-ContainerGuard addresses these failure modes through an in-kernel eBPF architecture coupled with a concurrent userspace pipeline. Every process execution is intercepted at kernel tracepoint boundaries, enriched with cgroup v2 filesystem inodes, assigned an immutable monotonic sequence number, and transferred to user space via an eBPF Ring Buffer. In user space, ContainerGuard reconciles events against the Docker engine event stream, resolves full process lineage, evaluates deterministic detection rules, and continuously verifies telemetry delivery against hardware and kernel accounting counters.
+ContainerGuard addresses these failure modes through an in-kernel eBPF architecture coupled with a concurrent userspace pipeline. Every process execution is intercepted at kernel tracepoint boundaries, enriched with cgroup v2 filesystem inodes, assigned an immutable monotonic sequence number, and transferred to user space via an eBPF Ring Buffer. In user space, ContainerGuard reconciles events against the Docker engine event stream, resolves full process lineage, evaluates deterministic detection rules, and continuously verifies telemetry delivery against kernel eBPF array map counters.
 
 ---
 
@@ -90,7 +90,7 @@ flowchart TD
     P5 ==> D5
 ```
 
-1. **PID Recycling:** In container hosts executing thousands of micro-tasks, the operating system rapidly recycles 16-bit or 22-bit process identifiers. A naive lineage tracker that keys processes on PID will attribute actions of a newly spawned process to a dead ancestor process.
+1. **PID Recycling:** In container hosts executing thousands of micro-tasks, the operating system recycles bounded integer process identifiers (governed by `/proc/sys/kernel/pid_max` and container namespace boundaries). A naive lineage tracker that keys processes on PID will attribute actions of a newly spawned process to a dead ancestor process.
 2. **Ephemeral Containers:** Attackers spin up disposable containers that execute malicious commands within 50 ms and exit immediately. Standard user-space pollers querying `/proc` or container APIs miss these ephemeral lifecycles entirely.
 3. **Cgroup Reassignment:** Workload schedulers, systemd slices, and resource limit adjustments frequently move executing processes between cgroups. Traditional tools treat this as a new process or lose the ancestry chain.
 4. **Silent Buffer Drops:** When an adversary executes an execution flood to blind the monitoring system, standard tracing buffers overflow silently. Security teams cannot distinguish between "no malicious activity occurred" and "malicious activity was concealed within dropped event buffers."
@@ -367,7 +367,7 @@ stateDiagram-v2
 
 ### Tombstone Caching & Asynchronous Race Handling
 - **Host Root Seeding:** At startup, `os.Stat("/sys/fs/cgroup")` seeds the host root inode. Any execution in this cgroup is definitively tagged as host execution.
-- **Attribution Buffer (`internal/pipeline/attribution_buffer.go`):** If an execution occurs in an unmapped cgroup during container creation, the event is held in a bounded FIFO queue (capacity: 1,000 items) with an expiration deadline (`PendingTTL = 2s`).
+- **Attribution Buffer (`internal/pipeline/attribution_buffer.go`):** If an execution occurs in an unmapped cgroup during container creation, the event is held in a bounded FIFO queue (capacity: 10,000 items per `DefaultConfig().MaxPendingCapacity`) with an expiration deadline (`PendingTTL = 2s`). In Phase H concurrent stress testing up to 25,000 events, peak queue depth reached 1,371 entries without dropping.
 - **Tombstone Caching (`staleMappings`):** When a container terminates, its cgroup inode mapping is preserved in a tombstone cache rather than deleted immediately. Delayed events draining from the kernel ring buffer are still attributed correctly to the container that created them.
 - **Fail-Safe Principle:** Unmapped cgroups are **never** treated as host actions; if unresolved after TTL expiration, they are tagged explicitly as `UNRESOLVED`.
 
@@ -430,10 +430,10 @@ flowchart TD
 2. **`CG-RULE-002` (Execution from Writable Directory):**
    - **Severity:** `HIGH`
    - **Trigger:** Process inside a confirmed container launches an executable from temporary or volatile mounts: `/tmp/`, `/dev/shm/`, `/var/tmp/`.
-3. **`CG-RULE-003` (Container Shell Execution):**
+3. **`CG-RULE-003` (Container Shell Binary Execution):**
    - **Severity:** `MEDIUM`
-   - **Trigger:** Process inside a confirmed container executes an interactive shell interpreter: `/bin/sh`, `/bin/bash`, `/bin/dash`, `/bin/ash`, `/bin/zsh`.
-   - **Scope Qualification:** Intercepts binary path execution; terminal interactivity (pty/tty or `-i`) is not evaluated in the 50% milestone.
+   - **Trigger:** Process inside a confirmed container executes a standard shell binary: `/bin/sh`, `/bin/bash`, `/bin/dash`, `/bin/ash`, `/bin/zsh`.
+   - **Scope Qualification:** Intercepts shell binary path execution within a container boundary; terminal interactivity (pseudo-terminal allocation `pty`/`tty` or `-i` flag) is not evaluated in the 50% milestone.
 
 ---
 
@@ -453,27 +453,43 @@ All reported metrics are backed by raw telemetry logs preserved in [`docs/eviden
 | **25,000 Events** | 13.02 s | 1,923.0 hooks/s | 25,032 | 0 (0.00%) | 0 | **100.00%** |
 
 ### B. Controlled Ring Buffer Saturation & Backpressure (Phase H.2)
-*Workload:* 2,000 target events dispatched during an induced 4.0-second userspace reader freeze across buffer configurations.
-*Evidence:* [`docs/SATURATION_EVALUATION.md`](docs/SATURATION_EVALUATION.md)
+*Workload:* 2,000 target events dispatched during an induced 4.0-second userspace reader freeze across buffer configurations.  
+*Evidence:* [`docs/SATURATION_EVALUATION.md`](docs/SATURATION_EVALUATION.md), [`docs/evidence/phase_h2/`](docs/evidence/phase_h2/)
 
-| Ring Buffer Size | Theoretical Capacity | Kernel Hooks | Submissions | Reserve Drops | Loss % | Conservation Equation Verified |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **16 MiB (`sat_bp_16mb`)** | 48,770 events | 2,105 | 2,105 | **0** | **0.00%** | $2,105 = 2,105 + 0$ (100.0%) |
-| **256 KiB (`sat_bp_256kb`)** | 762 events | 2,102 | 801 | **1,301** | **61.89%** | $2,102 = 801 + 1,301$ (100.0%) |
-| **64 KiB (`sat_bp_64kb`)** | 190 events | 2,104 | 231 | **1,873** | **89.02%** | $2,104 = 231 + 1,873$ (100.0%) |
+#### Event Schema & Capacity Modeling
+The ring buffer capacity depends on the wire footprint of the event structure (struct payload plus an 8-byte eBPF ring buffer record header):
+- **Phase H.2 Evaluation Schema:** 336-byte `struct exec_event` + 8-byte header = **344 bytes on wire**.
+- **Frozen 50% Release Schema:** 360-byte `struct exec_event` + 8-byte header = **368 bytes on wire** (expanded with 24 bytes for parent leader start time, EUID, and directory FD metadata).
+
+| Ring Buffer Size | Phase H.2 Wire (344B) Capacity | Release Wire (368B) Capacity | Kernel Hooks | Submissions | Reserve Drops | Loss % | Conservation Equation Verified |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **16 MiB (`sat_bp_16mb`)** | 48,770 events | 45,590 events | 2,105 | 2,105 | **0** | **0.00%** | $2,105 = 2,105 + 0$ (100.0%) |
+| **256 KiB (`sat_bp_256kb`)**| 762 events | 712 events | 2,102 | 801 | **1,301** | **61.89%** | $2,102 = 801 + 1,301$ (100.0%) |
+| **64 KiB (`sat_bp_64kb`)**  | 190 events | 178 events | 2,104 | 231 | **1,873** | **89.02%** | $2,104 = 231 + 1,873$ (100.0%) |
+
+> **Empirical Capacity Reconciliation:** During the 4.0-second reader pause in Phase H.2 (344B wire layout), exactly **190 events** fit into the 64 KiB buffer and **762 events** fit into the 256 KiB buffer before subsequent reservations failed with `bpf_ringbuf_reserve() == NULL`. The additional submissions (41 events for 64 KiB, 39 events for 256 KiB) were accepted after the userspace reader unblocked and resumed ring buffer draining. Under the frozen 368-byte release wire layout, theoretical unconsumed capacities are 178 events (64 KiB), 712 events (256 KiB), and 45,590 events (16 MiB).
 
 ### C. Detection Engine Validation (Phase I)
-*Workload:* 120 benign developer operations (GCC compilation stages, Git queries, container diagnostics) vs. 12 synthetic attack simulations.
-*Evidence:* [`docs/DETECTION_VALIDATION.md`](docs/DETECTION_VALIDATION.md)
+*Workload:* Benign developer operations (GCC compilation stages, Git queries, container diagnostics) vs. 12 synthetic container attack simulations.  
+*Evidence:* [`docs/DETECTION_VALIDATION.md`](docs/DETECTION_VALIDATION.md), [`docs/evidence/phase_i/`](docs/evidence/phase_i/)
 
+#### Dataset 2: Frozen 50% Milestone Corpus (Commit `b8f70f5` — 132 Events, 396 Decisions)
 | Rule Identifier | Trigger Definition | TP | FP | TN | FN | Precision | Recall | Specificity | FPR |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **`CG-RULE-001`** | Breakout Utilities (`nsenter`, `unshare`, etc.) | 4 | 0 | 128 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
 | **`CG-RULE-002`** | Writable Mount Execution (`/tmp`, `/dev/shm`) | 3 | 0 | 129 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
-| **`CG-RULE-003`** | Container Shell Binary (`/bin/sh`, `/bin/bash`) | 5 | 0 | 127 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
+| **`CG-RULE-003`** | Container Shell Binary Execution (`/bin/sh`, `/bin/bash`) | 5 | 0 | 127 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
 | **Macro Average**| **Across All 3 Rules (396 Rule Decisions)** | **12**| **0**| **384**| **0**| **100.00%**| **100.00%**| **100.00%**| **0.00%**|
 
-> **Corpus Reconciliation Note:** In the initial evaluation (Commit `7c56b1e`), 133 unique events were captured due to a single ambient host background IDE invocation (`/usr/bin/git`, `ParentTGID: 1016`, comm `language_server`) during daemon shutdown drain. In the 50% milestone rerun (Commit `b8f70f5`), exactly 132 scripted events were captured. Both evaluations exhibited 0 false positives and 100% precision/recall on the benchmark suite.
+#### Dataset 1: Initial Adversarial Evaluation Corpus (Commit `7c56b1e` — 133 Events, 399 Decisions)
+| Rule Identifier | Trigger Definition | TP | FP | TN | FN | Precision | Recall | Specificity | FPR |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`CG-RULE-001`** | Breakout Utilities (`nsenter`, `unshare`, etc.) | 4 | 0 | 129 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
+| **`CG-RULE-002`** | Writable Mount Execution (`/tmp`, `/dev/shm`) | 3 | 0 | 130 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
+| **`CG-RULE-003`** | Container Shell Binary Execution (`/bin/sh`, `/bin/bash`) | 5 | 0 | 128 | 0 | 100.00% | 100.00% | 100.00% | 0.00% |
+| **Macro Average**| **Across All 3 Rules (399 Rule Decisions)** | **12**| **0**| **387**| **0**| **100.00%**| **100.00%**| **100.00%**| **0.00%**|
+
+> **Corpus Reconciliation Note:** In Dataset 1 (`7c56b1e`), 133 unique events were captured due to a single ambient host background IDE invocation (`/usr/bin/git`, `TGID: 16615`, `ParentTGID: 1016`, `StartTimeNS: 17478663146`, comm `language_server`, cgroup `22`) during daemon shutdown drain. In Dataset 2 (`b8f70f5`), exactly 132 scripted events were captured in a clean environment. The ambient IDE process was correctly evaluated by the engine as benign host activity across all rules (+1 TN each $\to$ +3 TN total), yielding 100% precision and 0 false positives in both evaluations.
 
 ### D. Runtime Monitoring Overhead
 *Workload:* 2,000 rapid process executions across 4 worker streams with and without monitoring.
@@ -495,7 +511,7 @@ All reported metrics are backed by raw telemetry logs preserved in [`docs/eviden
 
 - **Operating System:** Linux 6.1+ x86_64 with kernel BTF enabled (`/sys/kernel/btf/vmlinux`).
 - **Control Groups:** Unified cgroup v2 hierarchy mounted at `/sys/fs/cgroup`.
-- **Compilers:** Clang / LLVM $\ge 14.0$ (tested with Clang 21.1.8), Go $\ge 1.22$ (tested with Go 1.24+).
+- **Compilers:** Clang / LLVM $\ge 14.0$ (tested with Clang 21.1.8), Go $\ge 1.26.8$ (as declared in `go.mod`).
 - **Libraries & Headers:** `libbpf-dev` ($\ge 1.0$), Linux kernel headers.
 - **Container Runtime:** Docker Engine $\ge 24.0$ (tested with Docker 29.9.3, containerd 2.4.2).
 
@@ -648,7 +664,6 @@ containerguard/
 │   ├── GITHUB_PUBLICATION_REPORT.md # Initial GitHub publication record
 │   └── evidence/                    # Raw telemetry streams & JSONL data logs
 └── .github/                         # GitHub repository configuration
-    ├── workflows/ci.yml             # GitHub Actions CI verification workflow
     ├── PULL_REQUEST_TEMPLATE.md     # Standardized pull request template
     └── ISSUE_TEMPLATE/              # Bug, documentation & research templates
 ```
@@ -658,7 +673,7 @@ containerguard/
 ## 15. Security Model & Threat Considerations
 
 - **Privilege Separation:** BPF program attachment and ring buffer mapping require administrative capabilities (`CAP_BPF`, `CAP_SYS_ADMIN`). ContainerGuard does not elevate unprivileged users.
-- **Denial of Service Resistance:** Bounded attribution queues (max 1,000 pending items) with hard TTL expirations prevent user-space memory exhaustion during sustained high-throughput bursts.
+- **Denial of Service Resistance:** Bounded attribution queues (max 10,000 pending items per `DefaultConfig().MaxPendingCapacity`) with hard TTL expirations prevent user-space memory exhaustion during sustained high-throughput bursts.
 - **Fail-Safe Principle:** If a cgroup cannot be attributed to a recognized container, ContainerGuard classifies it explicitly as `UNRESOLVED` rather than defaulting to host authority.
 
 ---
@@ -705,6 +720,8 @@ All empirical findings are accompanied by raw, unedited evidence artifacts:
   **Status: PASSED, VERIFIED, FROZEN & HALTED.**
 - **Phase II (50% – 100%):** Dynamic Policy Configuration, Inline LSM Syscall Prevention, Socket Correlation, Distributed Transport.  
   **Status: NOT AUTHORIZED & NOT STARTED.**
+
+> **Repository Configuration Notice:** Master branch protection rules and required status checks are not currently enabled on this private repository, as the project is in a frozen 50% milestone verification state without active continuous integration workflows.
 
 ---
 

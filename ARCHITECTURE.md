@@ -270,6 +270,7 @@ stateDiagram-v2
 2. **Docker Event Stream Listener:** A background worker monitors `/var/run/docker.sock` for `container create`, `start`, `die`, and `destroy` events.
 3. **Cgroup Inode Inspection:** When a container starts, ContainerGuard queries the container's PID via Docker API and reads `/proc/<pid>/cgroup` (entry `0::/path`) to stat `/sys/fs/cgroup/<path>`, obtaining the true 64-bit inode.
 4. **Tombstone Caching (`staleMappings`):** When a container stops, its cgroup inode mapping is moved to a tombstone cache rather than deleted immediately. Any in-flight execution events delayed in the ring buffer can still be attributed to the container that created them.
+5. **Bounded Attribution Queue:** Unmapped events wait in a FIFO queue with default capacity of 10,000 items (`DefaultConfig().MaxPendingCapacity = 10000`). If unmapped after `PendingTTL` (default 2s), they transition to `UNRESOLVED` without dropping or blocking the ingestion pipeline. In empirical stress tests up to 25,000 events, peak queue depth reached was 1,371 items, well within bounded capacity.
 
 ---
 
