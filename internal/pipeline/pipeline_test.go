@@ -160,6 +160,9 @@ func TestSequenceGapDetection(t *testing.T) {
 	binary.LittleEndian.PutUint64(s2[16:24], 15)
 	ingester.ProcessRawSample(ctx, s2)
 
+	// Flush sequence tracker on shutdown to retire pending gaps
+	ingester.Flush()
+
 	snap := accounting.Snapshot()
 	if snap.SequenceGapsDetected != 4 { // missed 11, 12, 13, 14
 		t.Errorf("expected 4 sequence gaps detected, got %d", snap.SequenceGapsDetected)

@@ -101,6 +101,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			log.Println("[containerguard] Shutdown signal received, terminating collector...")
+			ingester.Flush()
 			// Give buffer 500ms to flush pending
 			time.Sleep(500 * time.Millisecond)
 

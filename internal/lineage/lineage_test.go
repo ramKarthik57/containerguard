@@ -117,3 +117,51 @@ func TestLineageAncestryChain(t *testing.T) {
 		t.Errorf("lineage chain missing ancestors: %s", chain)
 	}
 }
+
+func TestLineageMultithreadedExecConsistency(t *testing.T) {
+	tracker := NewLineageTracker(100, 15*time.Minute)
+
+	// Process TGID 400 has thread-group leader start time 888888.
+	// Sub-thread 1 (TID 401) invokes execve.
+	leaderKey := telemetry.ProcessKey{CgroupID: 300, TGID: 400, StartTimeNS: 888888}
+	evThread1 := &telemetry.SecurityEvent{
+		Key:         leaderKey,
+		CgroupID:    300,
+		TGID:        400,
+		TID:         401,    // sub-thread 1
+		StartTimeNS: 888888, // leader start time
+		Comm:        "subthread1",
+		Filename:    "/bin/helper",
+		CapturedAt:  time.Now(),
+	}
+	tracker.RecordExec(evThread1)
+
+	// Verify node is correctly stored under process-level identity
+	node, exists := tracker.GetProcess(leaderKey)
+	if !exists {
+		t.Fatalf("failed to retrieve process node for leader key %+v", leaderKey)
+	}
+	if node.Key.TGID != 400 || node.Key.StartTimeNS != 888888 {
+		t.Errorf("node key mismatch: %+v", node.Key)
+	}
+
+	// Sub-thread 2 (TID 402) in the same process tree spawns child process TGID 500
+	childKey := telemetry.ProcessKey{CgroupID: 300, TGID: 500, StartTimeNS: 999999}
+	childEv := &telemetry.SecurityEvent{
+		Key:         childKey,
+		ParentKey:   leaderKey, // points to process leader, not thread TID
+		CgroupID:    300,
+		TGID:        500,
+		TID:         500,
+		ParentTGID:  400,
+		StartTimeNS: 999999,
+		Filename:    "/usr/bin/child_proc",
+		CapturedAt:  time.Now(),
+	}
+	childNode := tracker.RecordExec(childEv)
+
+	chain := tracker.FormatChain(childNode)
+	if !strings.Contains(chain, "/bin/helper(tgid:400") || !strings.Contains(chain, "/usr/bin/child_proc(tgid:500") {
+		t.Errorf("multithreaded lineage ancestry broken: %s", chain)
+	}
+}

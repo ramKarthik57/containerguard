@@ -9,19 +9,23 @@
 #define CG_METRIC_CGROUP_MAP_FAILS  3
 #define CG_METRIC_MAX_INDEX         4
 
+/* Event flags */
+#define CG_FLAG_START_TIME_ESTIMATED        (1 << 0)
+#define CG_FLAG_PARENT_START_TIME_ESTIMATED (1 << 1)
+
 struct exec_event {
     __u64 timestamp_ns;         /* Monotonic timestamp of execution */
     __u64 cgroup_id;            /* 64-bit cgroup v2 inode */
     __u64 seq_num;              /* Monotonic sequence number */
-    __u64 start_time_ns;        /* Trustworthy process start time from task_struct */
-    __u64 parent_start_time_ns; /* Parent process start time from real_parent */
+    __u64 start_time_ns;        /* Thread-group leader process start time */
+    __u64 parent_start_time_ns; /* Parent thread-group leader start time */
 
-    __u32 tid;                  /* Thread ID */
-    __u32 tgid;                 /* Process ID */
-    __u32 parent_tgid;          /* Parent Process ID */
+    __u32 tid;                  /* Thread ID of executing thread */
+    __u32 tgid;                 /* Process ID (Thread Group ID) */
+    __u32 parent_tgid;          /* Parent Process ID (PPID) */
     __u32 uid;                  /* User ID */
     __u32 gid;                  /* Group ID */
-    __u32 _pad;                 /* 4-byte padding for 64-byte aligned header */
+    __u32 flags;                /* Flags: estimated start time, degraded mode */
 
     char comm[16];              /* Command name */
     char filename[256];         /* Executable pathname */
@@ -94,11 +98,17 @@ int cg_execve_events(struct trace_event_raw_sys_enter *ctx)
 {
     struct exec_event *event;
     struct task_struct *task;
+    struct task_struct *leader;
     struct task_struct *parent;
+    struct task_struct *parent_leader;
     __u64 pid_tgid;
     __u64 uid_gid;
     __u64 cgroup_id;
     __u64 seq;
+    __u64 start_time;
+    __u64 parent_start_time = 0;
+    __u32 parent_tgid = 0;
+    __u32 flags = 0;
 
     /* 1. Account for every kernel hook invocation */
     increment_metric(CG_METRIC_HOOK_CALLS);
@@ -114,26 +124,51 @@ int cg_execve_events(struct trace_event_raw_sys_enter *ctx)
         return 0;
     }
 
+    /* Allocate monotonic sequence number strictly upon successful reservation */
     seq = next_seq_num();
     pid_tgid = bpf_get_current_pid_tgid();
     uid_gid = bpf_get_current_uid_gid();
 
     task = (struct task_struct *)bpf_get_current_task();
+    leader = BPF_CORE_READ(task, group_leader);
+    if (!leader)
+        leader = task;
+
     parent = BPF_CORE_READ(task, real_parent);
+    parent_leader = NULL;
+    if (parent) {
+        parent_leader = BPF_CORE_READ(parent, group_leader);
+        if (!parent_leader)
+            parent_leader = parent;
+    }
+
+    start_time = BPF_CORE_READ(leader, start_time);
+    if (start_time == 0) {
+        start_time = bpf_ktime_get_ns();
+        flags |= CG_FLAG_START_TIME_ESTIMATED;
+    }
+
+    if (parent_leader) {
+        parent_start_time = BPF_CORE_READ(parent_leader, start_time);
+        parent_tgid = BPF_CORE_READ(parent_leader, tgid);
+        if (parent_start_time == 0) {
+            flags |= CG_FLAG_PARENT_START_TIME_ESTIMATED;
+        }
+    }
 
     event->timestamp_ns = bpf_ktime_get_ns();
     event->cgroup_id = cgroup_id;
     event->seq_num = seq;
-    event->start_time_ns = BPF_CORE_READ(task, start_time);
-    event->parent_start_time_ns = BPF_CORE_READ(parent, start_time);
+    event->start_time_ns = start_time;
+    event->parent_start_time_ns = parent_start_time;
 
     event->tid = (__u32)pid_tgid;
     event->tgid = (__u32)(pid_tgid >> 32);
-    event->parent_tgid = BPF_CORE_READ(parent, tgid);
+    event->parent_tgid = parent_tgid;
 
     event->uid = (__u32)uid_gid;
     event->gid = (__u32)(uid_gid >> 32);
-    event->_pad = 0;
+    event->flags = flags;
 
     bpf_get_current_comm(event->comm, sizeof(event->comm));
 

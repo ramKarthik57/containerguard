@@ -49,3 +49,10 @@ func (in *Ingester) ProcessRawSample(ctx context.Context, sample []byte) (*telem
 
 	return event, nil
 }
+
+// Flush flushes any pending gaps in the sequence tracker on shutdown.
+func (in *Ingester) Flush() {
+	if retired := in.tracker.FlushRetires(); retired > 0 {
+		in.accounting.SequenceGapsDetected.Add(retired)
+	}
+}

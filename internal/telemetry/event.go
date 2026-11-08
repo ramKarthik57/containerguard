@@ -20,6 +20,12 @@ const (
 	AttributionHostConfirmed AttributionState = "HOST_CONFIRMED"
 )
 
+// Event flags from kernel eBPF probe.
+const (
+	FlagStartTimeEstimated       uint32 = 1 << 0
+	FlagParentStartTimeEstimated uint32 = 1 << 1
+)
+
 // ProcessKey is a structured, collision-resistant process identity preventing PID reuse.
 type ProcessKey struct {
 	CgroupID    uint64 `json:"cgroup_id"`
@@ -47,7 +53,7 @@ type RawExecEvent struct {
 	ParentTGID uint32
 	UID        uint32
 	GID        uint32
-	Pad        uint32
+	Flags      uint32
 
 	Comm     [16]byte
 	Filename [256]byte
@@ -55,28 +61,30 @@ type RawExecEvent struct {
 
 // SecurityEvent is the enriched userspace event structure.
 type SecurityEvent struct {
-	Raw               RawExecEvent     `json:"raw"`
-	Key               ProcessKey       `json:"key"`
-	ParentKey         ProcessKey       `json:"parent_key"`
-	CapturedAt        time.Time        `json:"captured_at"`
-	KernelTimeNS      uint64           `json:"kernel_time_ns"`
-	SeqNum            uint64           `json:"seq_num"`
-	CgroupID          uint64           `json:"cgroup_id"`
-	TID               uint32           `json:"tid"`
-	TGID              uint32           `json:"tgid"`
-	ParentTGID        uint32           `json:"parent_tgid"`
-	StartTimeNS       uint64           `json:"start_time_ns"`
-	ParentStartTimeNS uint64           `json:"parent_start_time_ns"`
-	UID               uint32           `json:"uid"`
-	GID               uint32           `json:"gid"`
-	Comm              string           `json:"comm"`
-	Filename          string           `json:"filename"`
-	State             AttributionState `json:"attribution_state"`
-	ContainerID       string           `json:"container_id,omitempty"`
-	ContainerName     string           `json:"container_name,omitempty"`
-	Image             string           `json:"image,omitempty"`
-	CgroupPath        string           `json:"cgroup_path,omitempty"`
-	PendingRetries    int              `json:"pending_retries,omitempty"`
+	Raw                      RawExecEvent     `json:"raw"`
+	Key                      ProcessKey       `json:"key"`
+	ParentKey                ProcessKey       `json:"parent_key"`
+	CapturedAt               time.Time        `json:"captured_at"`
+	KernelTimeNS             uint64           `json:"kernel_time_ns"`
+	SeqNum                   uint64           `json:"seq_num"`
+	CgroupID                 uint64           `json:"cgroup_id"`
+	TID                      uint32           `json:"tid"`
+	TGID                     uint32           `json:"tgid"`
+	ParentTGID               uint32           `json:"parent_tgid"`
+	StartTimeNS              uint64           `json:"start_time_ns"`
+	ParentStartTimeNS        uint64           `json:"parent_start_time_ns"`
+	StartTimeEstimated       bool             `json:"start_time_estimated"`
+	ParentStartTimeEstimated bool             `json:"parent_start_time_estimated"`
+	UID                      uint32           `json:"uid"`
+	GID                      uint32           `json:"gid"`
+	Comm                     string           `json:"comm"`
+	Filename                 string           `json:"filename"`
+	State                    AttributionState `json:"attribution_state"`
+	ContainerID              string           `json:"container_id,omitempty"`
+	ContainerName            string           `json:"container_name,omitempty"`
+	Image                    string           `json:"image,omitempty"`
+	CgroupPath               string           `json:"cgroup_path,omitempty"`
+	PendingRetries           int              `json:"pending_retries,omitempty"`
 }
 
 // DecodeRawExecEvent decodes bytes into RawExecEvent without reflection.
@@ -96,7 +104,7 @@ func DecodeRawExecEvent(buf []byte, target *RawExecEvent) error {
 	target.ParentTGID = binary.LittleEndian.Uint32(buf[48:52])
 	target.UID = binary.LittleEndian.Uint32(buf[52:56])
 	target.GID = binary.LittleEndian.Uint32(buf[56:60])
-	target.Pad = binary.LittleEndian.Uint32(buf[60:64])
+	target.Flags = binary.LittleEndian.Uint32(buf[60:64])
 
 	copy(target.Comm[:], buf[64:80])
 	copy(target.Filename[:], buf[80:336])
@@ -119,42 +127,41 @@ func NewSecurityEvent(raw RawExecEvent) *SecurityEvent {
 	comm := NullTerminatedString(raw.Comm[:])
 	filename := NullTerminatedString(raw.Filename[:])
 
-	// Fall back to event timestamp if kernel task start_time is 0
-	startTime := raw.StartTimeNS
-	if startTime == 0 {
-		startTime = raw.TimestampNS
-	}
+	startTimeEstimated := (raw.Flags & FlagStartTimeEstimated) != 0
+	parentStartTimeEstimated := (raw.Flags & FlagParentStartTimeEstimated) != 0
 
 	key := ProcessKey{
 		CgroupID:    raw.CgroupID,
 		TGID:        raw.TGID,
-		StartTimeNS: startTime,
+		StartTimeNS: raw.StartTimeNS,
 	}
 
 	parentKey := ProcessKey{
-		CgroupID:    raw.CgroupID, // Default parent cgroup; refined by lineage tracker if cross-cgroup
+		CgroupID:    raw.CgroupID,
 		TGID:        raw.ParentTGID,
 		StartTimeNS: raw.ParentStartTimeNS,
 	}
 
 	return &SecurityEvent{
-		Raw:               raw,
-		Key:               key,
-		ParentKey:         parentKey,
-		CapturedAt:        time.Now().UTC(),
-		KernelTimeNS:      raw.TimestampNS,
-		SeqNum:            raw.SeqNum,
-		CgroupID:          raw.CgroupID,
-		TID:               raw.TID,
-		TGID:              raw.TGID,
-		ParentTGID:        raw.ParentTGID,
-		StartTimeNS:       startTime,
-		ParentStartTimeNS: raw.ParentStartTimeNS,
-		UID:               raw.UID,
-		GID:               raw.GID,
-		Comm:              comm,
-		Filename:          filename,
-		State:             AttributionPending,
+		Raw:                      raw,
+		Key:                      key,
+		ParentKey:                parentKey,
+		CapturedAt:               time.Now().UTC(),
+		KernelTimeNS:             raw.TimestampNS,
+		SeqNum:                   raw.SeqNum,
+		CgroupID:                 raw.CgroupID,
+		TID:                      raw.TID,
+		TGID:                     raw.TGID,
+		ParentTGID:               raw.ParentTGID,
+		StartTimeNS:              raw.StartTimeNS,
+		ParentStartTimeNS:        raw.ParentStartTimeNS,
+		StartTimeEstimated:       startTimeEstimated,
+		ParentStartTimeEstimated: parentStartTimeEstimated,
+		UID:                      raw.UID,
+		GID:                      raw.GID,
+		Comm:                     comm,
+		Filename:                 filename,
+		State:                    AttributionPending,
 	}
 }
 
@@ -171,8 +178,13 @@ func (e *SecurityEvent) String() string {
 		cid = cid[:12]
 	}
 
+	estTag := ""
+	if e.StartTimeEstimated {
+		estTag = "(est)"
+	}
+
 	return fmt.Sprintf(
-		"TIME=%s | STATE=%s | SEQ=%d | CONTAINER=%s | CID=%s | CGROUP=%d | TGID=%d | PPID=%d | START=%d | COMM=%s | EXEC=%s",
+		"TIME=%s | STATE=%s | SEQ=%d | CONTAINER=%s | CID=%s | CGROUP=%d | TGID=%d | TID=%d | PPID=%d | START=%d%s | COMM=%s | EXEC=%s",
 		e.CapturedAt.Format(time.RFC3339Nano),
 		e.State,
 		e.SeqNum,
@@ -180,78 +192,104 @@ func (e *SecurityEvent) String() string {
 		cid,
 		e.CgroupID,
 		e.TGID,
+		e.TID,
 		e.ParentTGID,
 		e.StartTimeNS,
+		estTag,
 		strings.ReplaceAll(e.Comm, "|", "_"),
 		strings.ReplaceAll(e.Filename, "|", "_"),
 	)
 }
 
-// SequenceTracker tracks monotonic sequence numbers, distinguishing out-of-order arrivals from drops.
+// SequenceTracker tracks monotonic sequence numbers using a sliding watermark window,
+// accurately separating transient multi-core commit reordering from genuine permanent event loss.
 type SequenceTracker struct {
-	mu           sync.Mutex
-	maxSeq       uint64
-	initialized  bool
-	seen         map[uint64]bool
-	windowSize   uint64
-	reordered    uint64
-	confirmedGap uint64
+	mu             sync.Mutex
+	maxSeq         uint64
+	initialized    bool
+	pendingGaps    map[uint64]time.Time
+	reorderedCount uint64
+	confirmedLoss  uint64
+	windowSize     uint64
+	retireTimeout  time.Duration
 }
 
 // NewSequenceTracker initializes sequence tracker with a sliding reorder window.
 func NewSequenceTracker(windowSize uint64) *SequenceTracker {
 	if windowSize == 0 {
-		windowSize = 256
+		windowSize = 1024
 	}
 	return &SequenceTracker{
-		seen:       make(map[uint64]bool),
-		windowSize: windowSize,
+		pendingGaps:   make(map[uint64]time.Time),
+		windowSize:    windowSize,
+		retireTimeout: 2 * time.Second,
 	}
 }
 
-// Observe records a sequence number and returns (isReordered, confirmedGaps).
+// Observe records a sequence number and returns (isReordered, newlyConfirmedLosses).
 func (st *SequenceTracker) Observe(seq uint64) (bool, uint64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
+	now := time.Now()
+
 	if !st.initialized {
 		st.initialized = true
 		st.maxSeq = seq
-		st.seen[seq] = true
 		return false, 0
 	}
 
-	// 1. Check if it arrived out of order (behind maxSeq)
-	if seq < st.maxSeq {
-		if !st.seen[seq] {
-			st.seen[seq] = true
-			st.reordered++
+	// Case 1: Out-of-order delivery behind maxSeq
+	if seq <= st.maxSeq {
+		if _, isPending := st.pendingGaps[seq]; isPending {
+			delete(st.pendingGaps, seq)
+			st.reorderedCount++
 			return true, 0
 		}
-		// Duplicate sequence
+		// Duplicate or already retired sequence number
 		return false, 0
 	}
 
-	// 2. Advance maxSeq
-	gap := uint64(0)
+	// Case 2: Sequence jump ahead (new potential gaps created)
 	if seq > st.maxSeq+1 {
-		gap = seq - (st.maxSeq + 1)
+		for missing := st.maxSeq + 1; missing < seq; missing++ {
+			st.pendingGaps[missing] = now
+		}
 	}
-
-	st.seen[seq] = true
 	st.maxSeq = seq
 
-	// 3. Prune seen window
+	// Case 3: Retire pending gaps that have fallen behind the watermark window
+	newlyConfirmed := uint64(0)
 	if st.maxSeq > st.windowSize {
-		threshold := st.maxSeq - st.windowSize
-		for s := range st.seen {
-			if s < threshold {
-				delete(st.seen, s)
+		watermark := st.maxSeq - st.windowSize
+		for missing, created := range st.pendingGaps {
+			if missing <= watermark || now.Sub(created) > st.retireTimeout {
+				delete(st.pendingGaps, missing)
+				st.confirmedLoss++
+				newlyConfirmed++
 			}
 		}
 	}
 
-	return false, gap
+	return false, newlyConfirmed
+}
+
+// FlushRetires forces retirement of all remaining pending gaps on shutdown.
+func (st *SequenceTracker) FlushRetires() uint64 {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	flushed := uint64(len(st.pendingGaps))
+	st.confirmedLoss += flushed
+	st.pendingGaps = make(map[uint64]time.Time)
+	return flushed
+}
+
+// Stats returns a snapshot of sequence metrics.
+func (st *SequenceTracker) Stats() (reordered, confirmedLoss, pendingCount uint64) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.reorderedCount, st.confirmedLoss, uint64(len(st.pendingGaps))
 }
 
 // TelemetryAccounting tracks fine-grained kernel and userspace pipeline metrics.
