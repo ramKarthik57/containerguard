@@ -82,11 +82,12 @@ ContainerGuard is a kernel-level runtime security monitoring and intrusion detec
 
 ## Verified Research Findings (Kernel 6.18 WSL2)
 
-ContainerGuard was validated live against active Docker workloads (`cg-test-a`, `cg-test-b-event-test`) and stress testing harnesses:
-- **Kernel-Level Telemetry Accounting:** Verified zero-loss transmission across 1,040 syscall hooks with BPF map accounting matching userspace decode counts.
-- **Concurrent Throughput & Integrity:** Demonstrated 1,302.6 events/sec sustained throughput across 4 concurrent container/host worker streams with 100.00% telemetry delivery and 0 ring buffer reservation drops.
+ContainerGuard was validated live against active Docker workloads (`cg-test-a`, `cg-test-b-event-test`) and multi-tier stress testing harnesses:
+- **Telemetry Throughput Scaling:** Sustained up to 1,920.5 target events/sec (1,923.0 observed hooks/sec) across 4 concurrent container/host worker streams with 100.00% telemetry delivery and 0 ring buffer reservation drops across 41,126 total execution events.
+- **Evidence Reconciliation & Accounting:** Reconciled 100% of non-target hooks down to container orchestration, harness CLI, and ambient system events.
 - **Dynamic Cgroup Migration on Restart:** Proven across container restart (cgroup inode `5888` -> `5960` and `6320` -> `6392`) with seamless tombstone caching and attribution handover.
 - **Thread-Group Leader Identity:** Eliminates multithreaded PID and start-time skew by querying `task->group_leader->start_time` via BPF CO-RE.
-- **Race Condition Immunity:** Short-lived containers terminating before runtime inventory queries are held in `PENDING` and gracefully expire to `UNRESOLVED` without ever being falsely attributed to the host.
-- **Deterministic Detection Under Load:** Preserved critical security alerts (e.g. `ALERT-1028-CG-RULE-002` execution from `/tmp`) and full parent lineage during high-throughput execution bursts.
+- **Deterministic Detection Under Pressure:** Preserved all security test alerts (including `/tmp` executable launches `CG-RULE-002` and shell spawns `CG-RULE-003`) and full parent lineage during high-throughput execution bursts.
+- **Controlled Saturation Testing:** Phase H.2 benchmark harness (`scripts/saturation_test.sh`) enables capacity scaling (64 KiB to 16 MiB) and userspace backpressure evaluation to empirically map the telemetry loss boundary.
+
 

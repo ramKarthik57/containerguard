@@ -87,32 +87,54 @@ Executed via `sudo ./scripts/stress_test.sh <count>`:
   - Stream 4: Host workload stream (exercising non-container attribution pipeline)
 * **Adversarial Payload Injection:** `/tmp/exploit_sim.sh` executed inside `cg-test-b-event-test` mid-stream during peak concurrent load.
 
-### Empirical Results Summary
+### Empirical Results Summary (Phase H.1 Reconciled)
 
 | Metric | Tier 1 (1k Target) | Tier 2 (5k Target) | Tier 3 (10k Target) | Tier 4 (25k Target) |
 |---|---|---|---|---|
 | **Workload Duration** | **0.80s** | **2.82s** | **5.31s** | **13.02s** |
+| **Target Workload Throughput** | **1,252.5 ev/s** | **1,772.0 ev/s** | **1,884.0 ev/s** | **1,920.5 ev/s** |
 | **Observed Kernel Hooks** | **1,040** | **5,027** | **10,027** | **25,032** |
+| **Additional Non-Target Hooks** | **40** | **27** | **27** | **32** |
+| **Observed Hook Throughput** | **1,302.6 hooks/s** | **1,781.6 hooks/s** | **1,889.1 hooks/s** | **1,923.0 hooks/s** |
 | **Ring Buffer Submissions** | **1,040** | **5,027** | **10,027** | **25,032** |
-| **Ring Buffer Drops** | **0 (0.00%)** | **0 (0.00%)** | **0 (0.00%)** | **0 (0.00%)** |
+| **Ring Buffer Reserve Drops** | **0 (0.00%)** | **0 (0.00%)** | **0 (0.00%)** | **0 (0.00%)** |
 | **Cgroup Map Failures** | **0** | **0** | **0** | **0** |
-| **Userspace Records Received** | **1,040** | **5,027** | **10,027** | **25,032** |
-| **Userspace Decoded Records** | **1,040** | **5,027** | **10,027** | **25,032** |
-| **Sequence Gaps Detected** | **0** | **0** | **0** | **0** |
-| **Reordered Events Handled** | **0** | **0** | **0** | **1 (Watermark reconciled)** |
-| **Attribution Resolved (Containers)** | **762 (73.3%)** | **3,763 (74.9%)** | **7,512 (74.9%)** | **18,764 (75.0%)** |
-| **Attribution Unresolved (Non-Cont)**| **278 (26.7%)** | **1,264 (25.1%)** | **2,515 (25.1%)** | **6,268 (25.0%)** |
-| **Current Pending Queue Depth** | **0** | **0** | **0** | **0** |
-| **Peak Pending Queue Depth** | **277** | **1,259** | **1,361** | **1,371** |
-| **Event Throughput** | **1,302.6 events/s** | **1,781.6 events/s** | **1,889.1 events/s** | **1,923.0 events/s** |
+| **Userspace Records Decoded** | **1,040** | **5,027** | **10,027** | **25,032** |
 | **Telemetry Delivery Rate** | **100.00%** | **100.00%** | **100.00%** | **100.00%** |
-| **Critical Alert Retention** | **100% (Alert 1028)** | **100% (Alert 5022)** | **100% (Alert 10022)** | **100% (Shell Alerts)** |
+| **Sequence Gaps Detected** | **0** | **0** | **0** | **0** |
+| **Transient Inverted Allocations** | **0** | **0** | **0** | **1 (Reconciled)** |
+| **Container Attributed (RESOLVED)** | **762 (100% recall)**| **3,763 (100% recall)**| **7,512 (100% recall)**| **18,764 (100% recall)**|
+| **Non-Container (UNRESOLVED)** | **278** | **1,264** | **2,515** | **6,268** |
+| **False Container Attributions** | **0 (100% prec.)** | **0 (100% prec.)** | **0 (100% prec.)** | **0 (100% prec.)** |
+| **Peak Pending Queue Depth** | **277** | **1,259** | **1,361** | **1,371** |
+| **Pending Queue Depth at Exit** | **0** | **0** | **0** | **0** |
+| **Userspace Queue Overflows** | **0** | **0** | **0** | **0** |
+| **Deterministic Alert Execution** | **4/4 alerts** | **4/4 alerts** | **4/4 alerts** | **3/3 alerts** |
 
 ### Key Findings
-1. **Zero Telemetry Loss Across 41,126 Events:** Over all four tiers, 41,126 total execution events were captured with exactly zero ring buffer reservation drops (`CG_METRIC_RB_RESERVE_DROPS = 0`) and zero sequence gaps.
-2. **Attribution Ratio Convergence:** As sample size increased, container attribution resolved events converged from 73.3% to 74.96%, matching the expected 75.00% 3:1 container-to-host workload split to within 0.04%. Zero false-positive container attributions occurred.
-3. **Queue Bounding Dynamics:** Peak pending queue depth plateaued at 1,371 items during continuous 25,000-event execution, utilizing only 33.5% of the 4,096 capacity with zero queue overflows.
-4. **Live Multi-Core Watermark Validation:** In Tier 4, the sliding watermark sequence tracker detected and reconciled 1 transient multi-core out-of-order event commit, preventing false loss alarms and proving the watermark algorithm on a live multi-core Linux kernel.
-5. **Detection Retention Under Concurrency:** In-band exploit scripts executed from writable directories (`CG-RULE-002`) and shell executions (`CG-RULE-003`) were captured, alerted, and lineage-linked under maximum concurrent load.
+1. **Decomposition of Additional Hooks:** 100% of the 126 additional hooks across all tiers were identified: 36 container stream orchestration, 8 host stream orchestration, 29 harness CLI/shim, 11 injected security test conditions, 18 ambient WSL2 system, and 24 trailing residual executions.
+2. **Throughput Scaling:** Throughput scaled up to 1,923 observed hooks/sec (1,920.5 target events/sec) without ring buffer reservation drops.
+3. **Queue Bounding Dynamics:** Userspace attribution queue reached steady-state equilibrium at 1,371 entries (33.5% of 4,096 capacity), with zero queue overflows.
+4. **Multi-Core Sequence Allocation:** The Tier 4 reordering was confirmed as an interleaving between kernel ring buffer reservation and atomic sequence allocation across concurrent cores, which was absorbed by the watermark sequence window without false gap alarms.
+
+---
+
+## Experiment 4: Controlled Ring Buffer Saturation Evaluation (Phase H.2)
+
+### Objective
+Identify the empirical telemetry loss boundary of the eBPF monitor by evaluating smaller Ring Buffer configurations (64 KiB, 256 KiB, 1 MiB vs 16 MiB baseline) and introducing controlled userspace reader backpressure to observe kernel-side reservation drops, sequence gap detection, and post-saturation recovery.
+
+### Sizing and Theoretical Limits
+* Wire footprint per event: 344 bytes (336 struct + 8 header).
+* 64 KiB buffer: holds $\approx 190$ unconsumed events before reservation exhaustion.
+* 256 KiB buffer: holds $\approx 762$ unconsumed events.
+* 1 MiB buffer: holds $\approx 3,048$ unconsumed events.
+* 16 MiB baseline: holds $\approx 48,770$ unconsumed events.
+
+### Experimental Harness
+* Command: `sudo ./scripts/saturation_test.sh <label> <ringbuf_kb> <pause_sec> <streams> <events_per_stream>`
+* Suite 1: Capacity Sensitivity across 8 concurrent streams (2,000 events total).
+* Suite 2: Induced Userspace Backpressure (2s reader pause during 2,000 events) across 64 KiB, 256 KiB, and 16 MiB buffers.
+
 
 

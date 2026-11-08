@@ -84,12 +84,21 @@ static __always_inline void increment_cgroup_counter(__u64 cgroup_id)
     __u64 *val = bpf_map_lookup_elem(&cgroup_event_counters, &cgroup_id);
     if (val) {
         __sync_fetch_and_add(val, 1);
+        return;
+    }
+
+    __u64 init_val = 1;
+    long ret = bpf_map_update_elem(&cgroup_event_counters, &cgroup_id, &init_val, BPF_NOEXIST);
+    if (ret == 0) {
+        return;
+    }
+
+    /* Another core may have inserted concurrently under BPF_NOEXIST; re-lookup and atomically increment */
+    val = bpf_map_lookup_elem(&cgroup_event_counters, &cgroup_id);
+    if (val) {
+        __sync_fetch_and_add(val, 1);
     } else {
-        __u64 init_val = 1;
-        long ret = bpf_map_update_elem(&cgroup_event_counters, &cgroup_id, &init_val, BPF_ANY);
-        if (ret < 0) {
-            increment_metric(CG_METRIC_CGROUP_MAP_FAILS);
-        }
+        increment_metric(CG_METRIC_CGROUP_MAP_FAILS);
     }
 }
 

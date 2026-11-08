@@ -25,9 +25,26 @@ const (
 	MetricMaxIndex       = 4
 )
 
+// CollectorConfig configures ring buffer parameters and benchmark modes.
+type CollectorConfig struct {
+	RingBufSizeKB     int // Ring buffer size in KB (must be power-of-two * page size, e.g. 64, 256, 1024, 16384)
+	SimulatedPauseSec int // Artificially delay initial ring buffer reader startup by N seconds
+	SimulatedDelayMS  int // Artificially delay each sample read by N milliseconds
+}
+
+// DefaultCollectorConfig returns the production defaults (16MB buffer, no backpressure).
+func DefaultCollectorConfig() CollectorConfig {
+	return CollectorConfig{
+		RingBufSizeKB:     16384, // 16 MB default
+		SimulatedPauseSec: 0,
+		SimulatedDelayMS:  0,
+	}
+}
+
 // BPFCollector manages eBPF loading, ring buffer consumption, and kernel metric polling.
 type BPFCollector struct {
 	bpfPath    string
+	cfg        CollectorConfig
 	ingester   *pipeline.Ingester
 	accounting *telemetry.TelemetryAccounting
 
@@ -40,14 +57,28 @@ type BPFCollector struct {
 	closed bool
 }
 
-// NewBPFCollector initializes the collector configuration.
+// NewBPFCollector initializes the collector configuration with defaults.
 func NewBPFCollector(
 	bpfPath string,
 	ingester *pipeline.Ingester,
 	accounting *telemetry.TelemetryAccounting,
 ) *BPFCollector {
+	return NewBPFCollectorWithConfig(bpfPath, DefaultCollectorConfig(), ingester, accounting)
+}
+
+// NewBPFCollectorWithConfig initializes the collector with custom ring buffer and benchmark options.
+func NewBPFCollectorWithConfig(
+	bpfPath string,
+	cfg CollectorConfig,
+	ingester *pipeline.Ingester,
+	accounting *telemetry.TelemetryAccounting,
+) *BPFCollector {
+	if cfg.RingBufSizeKB <= 0 {
+		cfg.RingBufSizeKB = 16384
+	}
 	return &BPFCollector{
 		bpfPath:    bpfPath,
+		cfg:        cfg,
 		ingester:   ingester,
 		accounting: accounting,
 	}
@@ -64,6 +95,12 @@ func (c *BPFCollector) Start(ctx context.Context) error {
 		return fmt.Errorf("loading BPF collection spec from %s: %w", c.bpfPath, err)
 	}
 	c.spec = spec
+
+	if c.cfg.RingBufSizeKB > 0 && spec.Maps["events"] != nil {
+		targetBytes := uint32(c.cfg.RingBufSizeKB * 1024)
+		spec.Maps["events"].MaxEntries = targetBytes
+		log.Printf("[collector] configured Ring Buffer capacity: %d KiB (%d bytes)", c.cfg.RingBufSizeKB, targetBytes)
+	}
 
 	collection, err := ebpf.NewCollection(spec)
 	if err != nil {
@@ -118,7 +155,21 @@ func (c *BPFCollector) Start(ctx context.Context) error {
 func (c *BPFCollector) readLoop(ctx context.Context) {
 	defer c.Close()
 
+	if c.cfg.SimulatedPauseSec > 0 {
+		log.Printf("[collector] [BENCHMARK] Simulating userspace backpressure: pausing reader for %d seconds...", c.cfg.SimulatedPauseSec)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(c.cfg.SimulatedPauseSec) * time.Second):
+			log.Printf("[collector] [BENCHMARK] Userspace backpressure pause complete. Resuming ring buffer consumption.")
+		}
+	}
+
 	for {
+		if c.cfg.SimulatedDelayMS > 0 {
+			time.Sleep(time.Duration(c.cfg.SimulatedDelayMS) * time.Millisecond)
+		}
+
 		record, err := c.ringReader.Read()
 		if err != nil {
 			if ctx.Err() != nil || c.isClosed() {

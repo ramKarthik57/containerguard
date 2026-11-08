@@ -28,6 +28,9 @@ func main() {
 	eventsLog := flag.String("events-log", "", "Path to write JSON lines event stream (optional)")
 	alertsLog := flag.String("alerts-log", "", "Path to write JSON lines alert stream (optional)")
 	pendingTTL := flag.Duration("pending-ttl", 2*time.Second, "Attribution buffer pending event TTL")
+	ringbufSizeKB := flag.Int("ringbuf-size-kb", 16384, "eBPF Ring Buffer capacity in KiB (power of two * 4KB)")
+	backpressurePauseSec := flag.Int("backpressure-pause-sec", 0, "Benchmark backpressure: pause reader startup for N seconds")
+	backpressureDelayMS := flag.Int("backpressure-delay-ms", 0, "Benchmark backpressure: delay each sample read by N ms")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -69,8 +72,13 @@ func main() {
 	lineageTracker := lineage.NewLineageTracker(20000, 15*time.Minute)
 	detectionEngine := detection.NewEngine(lineageTracker)
 
-	// 7. Initialize and start eBPF Collector
-	bpfCollector := collector.NewBPFCollector(*bpfPath, ingester, accounting)
+	// 7. Initialize and start eBPF Collector with configurable capacity & backpressure
+	collectorCfg := collector.CollectorConfig{
+		RingBufSizeKB:     *ringbufSizeKB,
+		SimulatedPauseSec: *backpressurePauseSec,
+		SimulatedDelayMS:  *backpressureDelayMS,
+	}
+	bpfCollector := collector.NewBPFCollectorWithConfig(*bpfPath, collectorCfg, ingester, accounting)
 	if err := bpfCollector.Start(ctx); err != nil {
 		log.Fatalf("Failed to start eBPF collector: %v", err)
 	}
@@ -102,8 +110,29 @@ func main() {
 		case <-ctx.Done():
 			log.Println("[containerguard] Shutdown signal received, terminating collector...")
 			ingester.Flush()
-			// Give buffer 500ms to flush pending
-			time.Sleep(500 * time.Millisecond)
+			// Drain remaining events in outChan up to 3 seconds deadline
+			drainTimeout := time.After(3 * time.Second)
+		drainLoop:
+			for {
+				select {
+				case event, ok := <-outChan:
+					if !ok {
+						break drainLoop
+					}
+					lineageTracker.RecordExec(event)
+					alerts := detectionEngine.Evaluate(event)
+					for _, alert := range alerts {
+						_ = store.WriteAlert(alert)
+					}
+					_ = store.WriteEvent(event)
+					accounting.EventsProcessed.Add(1)
+				case <-drainTimeout:
+					log.Println("[containerguard] Drain deadline elapsed during shutdown.")
+					break drainLoop
+				default:
+					break drainLoop
+				}
+			}
 
 			finalSnapshot := accounting.Snapshot()
 			finalJSON, _ := json.MarshalIndent(finalSnapshot, "", "  ")

@@ -214,4 +214,23 @@
   - Writable mount execution alerts (`ALERT-5022-CG-RULE-002`, `ALERT-10022-CG-RULE-002`) and shell spawner alerts (`CG-RULE-003`) were captured with lineage preserved under maximum workload concurrency.
 - **Archival:** Complete logs and reports stored in `docs/evidence/phase_h/` (`stress_5000/`, `stress_10000/`, `stress_25000/`).
 
+### Entry 008 - 2026-11-08: Phase H.1 Evidence Reconciliation and Phase H.2 Saturation Harness
+- **Status:** Phase H.1 Completed; Phase H.2 Harness Implemented.
+- **Git Commit:** Following `dca8d56`
+- **Phase H.1 Reconciled Evidence:**
+  1. *Additional Hooks Breakdown:* All 126 additional hooks across the 4 tiers were identified by process and origin (36 container orchestration, 8 host orchestration, 29 harness CLI, 11 injected conditions, 18 ambient WSL2 system, 24 trailing residual).
+  2. *Throughput Definitions:* Replaced single throughput metric with distinct Target Workload Throughput (up to 1,920.5 ev/s) and Observed Hook Throughput (up to 1,923.0 hooks/s).
+  3. *Atomic Counter Correctness:* Audited `bpf/execve_events.c`. Confirmed hardware-atomic `__sync_fetch_and_add` across all maps; hardened cgroup counter insertion using `BPF_NOEXIST` with atomic re-lookup fallback to eliminate insertion race conditions.
+  4. *Sequence Order Correction:* Clarified that BPF ring buffer records are consumed in reservation order; the single Tier 4 reordering was an interleaving between reservation timestamp and atomic sequence ticket acquisition across cores.
+  5. *Attribution Ground Truth:* 30,801 container events resolved (100% precision, 100% recall); non-container host events correctly designated as `UNRESOLVED` rather than claimed host events.
+  6. *Alert Preservation:* Clarified that firing `/tmp` scripts evaluates deterministic rule execution, not real-world multi-stage exploits.
+- **Phase H.2 Engineering Implementation:**
+  - Added `-ringbuf-size-kb`, `-backpressure-pause-sec`, and `-backpressure-delay-ms` flags to ContainerGuard daemon.
+  - Implemented dynamic ring buffer sizing in `internal/collector/collector.go` (`spec.Maps["events"].MaxEntries = sizeKB * 1024`).
+  - Implemented backpressure simulation pause and per-sample delay in `BPFCollector.readLoop`.
+  - Added shutdown drain loop in `cmd/containerguard/main.go` to ensure all in-flight channel events are processed before writing the final accounting snapshot.
+  - Authored automated benchmark harness `scripts/saturation_test.sh` supporting capacity scaling (64 KiB, 256 KiB, 1 MiB, 16 MiB), concurrency scaling (up to 16 streams), and resource sampling (CPU %, RAM).
+  - Authored experimental specification `docs/SATURATION_EVALUATION.md`.
+
+
 
