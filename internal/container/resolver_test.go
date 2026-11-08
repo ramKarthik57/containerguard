@@ -60,3 +60,26 @@ func TestContainerResolverAttribution(t *testing.T) {
 		t.Errorf("expected IsStale to be true")
 	}
 }
+
+func TestUnknownCgroupNeverClassifiedAsHost(t *testing.T) {
+	resolver := NewContainerResolver(nil)
+	resolver.SetHostRootCgroup(4096)
+
+	// Test a range of arbitrary unknown cgroups: none should ever return HOST_CONFIRMED
+	unknownCgroups := []uint64{0, 1, 2, 50, 100, 99999, 18446744073709551615}
+	for _, cg := range unknownCgroups {
+		info, state := resolver.Resolve(cg)
+		if state == telemetry.AttributionHostConfirmed {
+			t.Errorf("critical failure: unmapped cgroup %d incorrectly classified as HOST_CONFIRMED", cg)
+		}
+		if info.Name == "HOST" {
+			t.Errorf("critical failure: unmapped cgroup %d assigned name HOST", cg)
+		}
+	}
+
+	// Only exact host root cgroup (4096) should return HOST_CONFIRMED
+	info, state := resolver.Resolve(4096)
+	if state != telemetry.AttributionHostConfirmed || info.Name != "HOST" {
+		t.Errorf("expected confirmed host for root cgroup 4096, got state=%s, info=%+v", state, info)
+	}
+}

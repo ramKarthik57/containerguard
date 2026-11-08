@@ -90,3 +90,26 @@ Memory layout is aligned. However, decoding via `binary.Read(bytes.NewReader(rec
 ### Defect 5: Host Attribution False Positives
 - **Mechanism:** Root cgroup or unmapped processes default to `HOST_OR_UNMAPPED`.
 - **Solution Required:** Read host root cgroup inode at startup to confirm `HOST_CONFIRMED`, distinguishing host processes from unmapped or pending container processes.
+
+
+---
+
+## 4. Phase B Follow-Up Audit: Process Identity and Lineage Key Defect Correction
+
+### Heuristic Key Analysis
+- **Defective Formula:** `(cgroup_id << 32) ^ TGID`
+- **Flaws Identified:**
+  1. Bit truncation: Shifting an arbitrary 64-bit cgroup v2 inode left by 32 bits discards the upper 32 bits, causing hash collisions between unrelated cgroups.
+  2. Inability to handle PID reuse within the same cgroup: If process $P_1$ with TGID 500 exits and process $P_2$ is assigned TGID 500 later in the same cgroup, both yield identical keys, corrupting process relationship state.
+
+### Corrected Structured Key Model
+```go
+type ProcessKey struct {
+    CgroupID    uint64 `json:"cgroup_id"`
+    TGID        uint32 `json:"tgid"`
+    StartTimeNS uint64 `json:"start_time_ns"`
+}
+```
+- Monotonic kernel task `start_time` is captured directly via BPF CO-RE from `task_struct`.
+- Composite identity guarantees mathematical uniqueness over the entire lifetime of the system.
+- Parent identity is explicitly tracked using `ParentKey ProcessKey`, preserving full parent metadata and ancestry trees.

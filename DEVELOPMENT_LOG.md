@@ -57,3 +57,30 @@
     - `internal/detection`: `TestDetectionRules`.
   - Static analysis: `go vet ./...` clean; `gofmt` applied across entire codebase.
   - Build script `scripts/build.sh` produces `bin/containerguard` and `bpf/execve_events.o`.
+
+### Entry 003 - 2026-11-08: Process Identity Audit & Structured Key Correction
+- **Status:** Completed.
+- **Audited Items & Findings:**
+  1. *Correction of Composite Process Key:*
+     - The prior heuristic key `(cgroup_id << 32) ^ TGID` discarded the upper 32 bits of 64-bit cgroup IDs and failed to isolate successive processes reusing a TGID in the same cgroup.
+     - Replaced with structured identity `telemetry.ProcessKey`:
+       ```go
+       type ProcessKey struct {
+           CgroupID    uint64
+           TGID        uint32
+           StartTimeNS uint64
+       }
+       ```
+     - Integrated `task_struct->start_time` and `real_parent` extraction via BPF CO-RE (`vmlinux.h` generated from `/sys/kernel/btf/vmlinux`).
+     - Added parent instance tracking (`ParentKey`) preserving complete parent identity across process execution chains.
+  2. *Audit of Host Attribution:*
+     - Verified that unmapped cgroups are strictly placed into `PENDING` state and transition to `UNRESOLVED` upon timeout. They are never defaulted to `HOST_CONFIRMED`.
+     - Added unit test `TestUnknownCgroupNeverClassifiedAsHost` verifying arbitrary cgroups cannot be misclassified as host.
+  3. *Audit of Kernel Loss Counters & Per-Cgroup Map:*
+     - Added `CG_METRIC_CGROUP_MAP_FAILS` (index 3) to `telemetry_counters` to explicitly count hash-map update failures.
+     - Verified `bpf_ringbuf_reserve` failure accounting is atomic.
+  4. *Audit of Monotonic Sequence Numbers:*
+     - Implemented `SequenceTracker` with a sliding reorder window (1024 elements) to distinguish multi-core ring buffer commit reordering from genuine sequence drops.
+  5. *Privilege Model Enforcement:*
+     - Explicitly preserved existing privilege model: no passwordless sudo rules and no docker group modifications.
+     - Authored reproducible live integration test runner `scripts/live_integration_test.sh` for user-authenticated execution context.

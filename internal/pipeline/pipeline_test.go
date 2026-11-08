@@ -33,12 +33,13 @@ func TestAttributionRaceResolution(t *testing.T) {
 	// Step 1: Simulate eBPF event arriving BEFORE container registration (cgroup 500)
 	rawSample := make([]byte, telemetry.RawExecEventSize)
 	binary.LittleEndian.PutUint64(rawSample[0:8], 1000)
-	binary.LittleEndian.PutUint64(rawSample[8:16], 500)  // CgroupID = 500
-	binary.LittleEndian.PutUint64(rawSample[16:24], 1)   // Seq = 1
-	binary.LittleEndian.PutUint32(rawSample[24:28], 100) // TID
-	binary.LittleEndian.PutUint32(rawSample[28:32], 100) // TGID
-	copy(rawSample[40:56], "app\x00")
-	copy(rawSample[56:312], "/usr/local/bin/app\x00")
+	binary.LittleEndian.PutUint64(rawSample[8:16], 500)   // CgroupID = 500
+	binary.LittleEndian.PutUint64(rawSample[16:24], 1)    // Seq = 1
+	binary.LittleEndian.PutUint64(rawSample[24:32], 5000) // StartTimeNS = 5000
+	binary.LittleEndian.PutUint32(rawSample[40:44], 100)  // TID
+	binary.LittleEndian.PutUint32(rawSample[44:48], 100)  // TGID
+	copy(rawSample[64:80], "app\x00")
+	copy(rawSample[80:336], "/usr/local/bin/app\x00")
 
 	ev, err := ingester.ProcessRawSample(ctx, rawSample)
 	if err != nil {
@@ -153,7 +154,7 @@ func TestSequenceGapDetection(t *testing.T) {
 	binary.LittleEndian.PutUint64(s1[16:24], 10)
 	ingester.ProcessRawSample(ctx, s1)
 
-	// Sample 2: Seq = 15 (5 events dropped in kernel ring buffer!)
+	// Sample 2: Seq = 15 (5 events dropped in kernel ring buffer: 11, 12, 13, 14)
 	s2 := make([]byte, telemetry.RawExecEventSize)
 	binary.LittleEndian.PutUint64(s2[8:16], 1)
 	binary.LittleEndian.PutUint64(s2[16:24], 15)

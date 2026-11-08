@@ -11,24 +11,20 @@ import (
 
 // ProcessNode represents a single process node in the execution graph.
 type ProcessNode struct {
-	CompositeKey uint64    `json:"composite_key"`
-	TGID         uint32    `json:"tgid"`
-	TID          uint32    `json:"tid"`
-	PPID         uint32    `json:"ppid"`
-	UID          uint32    `json:"uid"`
-	GID          uint32    `json:"gid"`
-	CgroupID     uint64    `json:"cgroup_id"`
-	ContainerID  string    `json:"container_id"`
-	Comm         string    `json:"comm"`
-	Executable   string    `json:"executable"`
-	StartTime    time.Time `json:"start_time"`
-	ParentKey    uint64    `json:"parent_key,omitempty"`
+	Key         telemetry.ProcessKey `json:"key"`
+	ParentKey   telemetry.ProcessKey `json:"parent_key"`
+	UID         uint32               `json:"uid"`
+	GID         uint32               `json:"gid"`
+	ContainerID string               `json:"container_id"`
+	Comm        string               `json:"comm"`
+	Executable  string               `json:"executable"`
+	StartTime   time.Time            `json:"start_time"`
 }
 
-// LineageTracker maintains a bounded, container-aware process relationship store.
+// LineageTracker maintains a bounded, container-isolated process relationship store.
 type LineageTracker struct {
 	mu        sync.RWMutex
-	processes map[uint64]*ProcessNode // key: composite (cgroupID ^ tgid)
+	processes map[telemetry.ProcessKey]*ProcessNode
 	maxNodes  int
 	ttl       time.Duration
 }
@@ -39,18 +35,13 @@ func NewLineageTracker(maxNodes int, ttl time.Duration) *LineageTracker {
 		maxNodes = 20000
 	}
 	if ttl <= 0 {
-		ttl = 10 * time.Minute
+		ttl = 15 * time.Minute
 	}
 	return &LineageTracker{
-		processes: make(map[uint64]*ProcessNode),
+		processes: make(map[telemetry.ProcessKey]*ProcessNode),
 		maxNodes:  maxNodes,
 		ttl:       ttl,
 	}
-}
-
-// compositeKey forms a collision-resistant key combining cgroup and TGID to handle PID reuse.
-func compositeKey(cgroupID uint64, tgid uint32) uint64 {
-	return (cgroupID << 32) ^ uint64(tgid)
 }
 
 // RecordExec records an execve event into the lineage store.
@@ -58,52 +49,65 @@ func (lt *LineageTracker) RecordExec(event *telemetry.SecurityEvent) *ProcessNod
 	lt.mu.Lock()
 	defer lt.mu.Unlock()
 
-	// Evict stale nodes if capacity is reached
+	// Enforce bounded storage capacity
 	if len(lt.processes) >= lt.maxNodes {
 		lt.evictOldest()
 	}
 
-	key := compositeKey(event.CgroupID, event.TGID)
 	node := &ProcessNode{
-		CompositeKey: key,
-		TGID:         event.TGID,
-		TID:          event.TID,
-		UID:          event.UID,
-		GID:          event.GID,
-		CgroupID:     event.CgroupID,
-		ContainerID:  event.ContainerID,
-		Comm:         event.Comm,
-		Executable:   event.Filename,
-		StartTime:    event.CapturedAt,
+		Key:         event.Key,
+		ParentKey:   event.ParentKey,
+		UID:         event.UID,
+		GID:         event.GID,
+		ContainerID: event.ContainerID,
+		Comm:        event.Comm,
+		Executable:  event.Filename,
+		StartTime:   event.CapturedAt,
 	}
 
-	lt.processes[key] = node
+	lt.processes[event.Key] = node
 	return node
 }
 
-// GetProcess retrieves a process node by cgroup and TGID.
-func (lt *LineageTracker) GetProcess(cgroupID uint64, tgid uint32) (*ProcessNode, bool) {
+// GetProcess retrieves a process node by its structured key.
+func (lt *LineageTracker) GetProcess(key telemetry.ProcessKey) (*ProcessNode, bool) {
 	lt.mu.RLock()
 	defer lt.mu.RUnlock()
 
-	node, exists := lt.processes[compositeKey(cgroupID, tgid)]
+	node, exists := lt.processes[key]
 	return node, exists
 }
 
-// FormatChain returns a human-readable lineage string for detection and forensics.
+// FindProcessByTGID searches the most recent active process for a given cgroup and TGID.
+func (lt *LineageTracker) FindProcessByTGID(cgroupID uint64, tgid uint32) (*ProcessNode, bool) {
+	lt.mu.RLock()
+	defer lt.mu.RUnlock()
+
+	var latest *ProcessNode
+	for k, node := range lt.processes {
+		if k.CgroupID == cgroupID && k.TGID == tgid {
+			if latest == nil || node.Key.StartTimeNS > latest.Key.StartTimeNS {
+				latest = node
+			}
+		}
+	}
+
+	return latest, latest != nil
+}
+
+// FormatChain reconstructs the ancestry chain walking structured parent keys.
 func (lt *LineageTracker) FormatChain(node *ProcessNode) string {
 	if node == nil {
 		return "unknown"
 	}
 
-	chain := []string{fmt.Sprintf("%s(tgid:%d)", node.Executable, node.TGID)}
+	chain := []string{fmt.Sprintf("%s(tgid:%d,start:%d)", node.Executable, node.Key.TGID, node.Key.StartTimeNS)}
 	current := node
 
-	// Walk parent links where available
-	visited := make(map[uint64]bool)
-	visited[node.CompositeKey] = true
+	visited := make(map[telemetry.ProcessKey]bool)
+	visited[node.Key] = true
 
-	for current.ParentKey != 0 {
+	for current.ParentKey.TGID != 0 {
 		if visited[current.ParentKey] {
 			break
 		}
@@ -111,20 +115,37 @@ func (lt *LineageTracker) FormatChain(node *ProcessNode) string {
 
 		lt.mu.RLock()
 		parent, ok := lt.processes[current.ParentKey]
+		if !ok && current.ParentKey.StartTimeNS == 0 {
+			// If parent start time was not captured in kernel, fallback to most recent matching TGID
+			parent, ok = lt.findProcessByTGIDLocked(current.ParentKey.CgroupID, current.ParentKey.TGID)
+		}
 		lt.mu.RUnlock()
 
-		if !ok {
+		if !ok || parent == nil {
 			break
 		}
-		chain = append([]string{fmt.Sprintf("%s(tgid:%d)", parent.Executable, parent.TGID)}, chain...)
+
+		chain = append([]string{fmt.Sprintf("%s(tgid:%d,start:%d)", parent.Executable, parent.Key.TGID, parent.Key.StartTimeNS)}, chain...)
 		current = parent
 	}
 
 	return strings.Join(chain, " -> ")
 }
 
+func (lt *LineageTracker) findProcessByTGIDLocked(cgroupID uint64, tgid uint32) (*ProcessNode, bool) {
+	var latest *ProcessNode
+	for k, node := range lt.processes {
+		if k.CgroupID == cgroupID && k.TGID == tgid {
+			if latest == nil || node.Key.StartTimeNS > latest.Key.StartTimeNS {
+				latest = node
+			}
+		}
+	}
+	return latest, latest != nil
+}
+
 func (lt *LineageTracker) evictOldest() {
-	var oldestKey uint64
+	var oldestKey telemetry.ProcessKey
 	var oldestTime time.Time
 	first := true
 

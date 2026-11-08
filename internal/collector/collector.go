@@ -18,10 +18,11 @@ import (
 
 // Metric indexes corresponding to bpf/execve_events.c
 const (
-	MetricHookCalls    = 0
-	MetricReserveDrops = 1
-	MetricSubmitted    = 2
-	MetricMaxIndex     = 3
+	MetricHookCalls      = 0
+	MetricReserveDrops   = 1
+	MetricSubmitted      = 2
+	MetricCgroupMapFails = 3
+	MetricMaxIndex       = 4
 )
 
 // BPFCollector manages eBPF loading, ring buffer consumption, and kernel metric polling.
@@ -189,6 +190,8 @@ func (c *BPFCollector) PollKernelMetrics() error {
 				c.accounting.KernelRingBufferDrops.Store(val)
 			case MetricSubmitted:
 				c.accounting.KernelRingBufferSubmit.Store(val)
+			case MetricCgroupMapFails:
+				c.accounting.KernelCgroupMapFails.Store(val)
 			}
 		}
 	}

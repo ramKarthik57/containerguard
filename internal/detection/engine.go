@@ -88,7 +88,10 @@ func (r *ContainerEscapeRule) Evaluate(event *telemetry.SecurityEvent, tracker *
 		if strings.HasSuffix(exec, "/"+s) || exec == s {
 			chain := ""
 			if tracker != nil {
-				node, _ := tracker.GetProcess(event.CgroupID, event.TGID)
+				node, _ := tracker.GetProcess(event.Key)
+				if node == nil {
+					node, _ = tracker.FindProcessByTGID(event.CgroupID, event.TGID)
+				}
 				chain = tracker.FormatChain(node)
 			}
 

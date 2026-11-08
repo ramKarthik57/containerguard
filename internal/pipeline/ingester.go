@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 
 	"cg-smoke-test/internal/telemetry"
 )
@@ -13,16 +12,15 @@ import (
 type Ingester struct {
 	buffer     *AttributionBuffer
 	accounting *telemetry.TelemetryAccounting
-
-	lastSeqNum atomic.Uint64
-	hasSeenSeq atomic.Bool
+	tracker    *telemetry.SequenceTracker
 }
 
-// NewIngester constructs an ingester.
+// NewIngester constructs an ingester with a sequence tracker.
 func NewIngester(buffer *AttributionBuffer, accounting *telemetry.TelemetryAccounting) *Ingester {
 	return &Ingester{
 		buffer:     buffer,
 		accounting: accounting,
+		tracker:    telemetry.NewSequenceTracker(1024),
 	}
 }
 
@@ -38,17 +36,13 @@ func (in *Ingester) ProcessRawSample(ctx context.Context, sample []byte) (*telem
 
 	in.accounting.RecordsDecoded.Add(1)
 
-	// Check monotonic sequence number continuity
-	if in.hasSeenSeq.Load() {
-		last := in.lastSeqNum.Load()
-		if raw.SeqNum > last+1 {
-			gap := raw.SeqNum - (last + 1)
-			in.accounting.SequenceGapsDetected.Add(gap)
-		}
-	} else {
-		in.hasSeenSeq.Store(true)
+	// Check monotonic sequence number continuity and multi-core reordering
+	isReordered, gap := in.tracker.Observe(raw.SeqNum)
+	if isReordered {
+		in.accounting.ReorderedEvents.Add(1)
+	} else if gap > 0 {
+		in.accounting.SequenceGapsDetected.Add(gap)
 	}
-	in.lastSeqNum.Store(raw.SeqNum)
 
 	event := telemetry.NewSecurityEvent(raw)
 	in.buffer.Ingest(event)
