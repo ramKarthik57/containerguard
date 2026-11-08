@@ -527,7 +527,7 @@ Detailed instructions are available in the [Build Manual (BUILD.md)](BUILD.md).
 git clone https://github.com/ramKarthik57/containerguard.git
 cd containerguard
 
-# Automated build (eBPF object + Go daemon)
+# Automated build (compiles to build/ to safely preserve tracked release binaries)
 ./scripts/build.sh
 ```
 

@@ -3,7 +3,7 @@
 **Phase:** Phase I.2 & Phase I.3  
 **Status:** Validated Live  
 **Test Harness:** `scripts/execution_path_test.sh` & `cmd/test_exec_paths/main.c`  
-**Evidence Artifact:** `docs/evidence/phase_i/execution_path_report.json`  
+**Evidence Artifact:** `docs/evidence/phase_i/execution_path_report.json` *(Preserved baseline archive; live reproduction runs output to `docs/evidence/phase_i/runs/<run_id>/`)*  
 
 ---
 
@@ -73,7 +73,7 @@ Each execution path was evaluated using `bin/test_exec_paths` and containerized 
 | **9** | **Failed Exec: EACCES** | `execve(2)` | `/tmp/cg_no_exec.bin` (`chmod 0644`, non-executable) | Flagged `CG_FLAG_EXEC_FAILED`, `exit_code: -13` (EACCES) | **PASS** |
 | **10** | **Pathname Truncation** | `execve(2)` | Path length > 350 bytes (> 256-byte buffer) | Flagged `CG_FLAG_PATH_TRUNCATED`, null-terminated | **PASS** |
 | **11** | **Comm Truncation** | `execve(2)` | Process comm padded to 16 bytes via `prctl` | Flagged `CG_FLAG_COMM_TRUNCATED` | **PASS** |
-| **12** | **Setuid Binary** | `execve(2)` | `/usr/bin/sudo` | Intercepted and attributed with elevated privileges | **PASS** |
+| **12** | **Setuid Binary** | `execve(2)` | `setuid_test` (`UID 1000 -> EUID 0`) / `/usr/bin/sudo` | Flagged `CG_FLAG_SETUID_EXEC`, elevated EUID 0 captured | **PASS** |
 | **13** | **Containerized Workload**| `execve(2)` | `docker exec cg-test-a /bin/date` | Attributed to container `cg-test-a` (`RESOLVED`) | **PASS** |
 | **14** | **Cgroup Migration** | `execve(2)` | Process moved between `/sys/fs/cgroup/cg_mig_*` | Unified under single lineage node, `cgroup_migrated: true`| **PASS** |
 
