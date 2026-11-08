@@ -131,10 +131,22 @@ Identify the empirical telemetry loss boundary of the eBPF monitor by evaluating
 * 1 MiB buffer: holds $\approx 3,048$ unconsumed events.
 * 16 MiB baseline: holds $\approx 48,770$ unconsumed events.
 
-### Experimental Harness
-* Command: `sudo ./scripts/saturation_test.sh <label> <ringbuf_kb> <pause_sec> <streams> <events_per_stream>`
-* Suite 1: Capacity Sensitivity across 8 concurrent streams (2,000 events total).
-* Suite 2: Induced Userspace Backpressure (2s reader pause during 2,000 events) across 64 KiB, 256 KiB, and 16 MiB buffers.
+### Empirical Results: Suite 1 (8-Stream Concurrency, Active Drain)
+* **Configuration:** 8 streams $\times$ 250 executions = 2,000 target events.
+* **Findings:**
+  - 16 MiB, 1 MiB, 256 KiB, 64 KiB: **0 drops across all sizes** under active drain.
+  - Throughput: 2,316 – 2,445 hooks/sec.
+  - Collector RSS: dropped from 56.5 MiB (16 MiB buffer) to 25.0 MiB (1 MiB buffer).
+
+### Empirical Results: Suite 2 (Induced 4-Second Userspace Backpressure)
+* **Configuration:** 4 streams $\times$ 500 executions = 2,000 target events during 4.0s reader freeze.
+* **Findings:**
+  - `sat_bp_16mb`: 2,100 hooks, 2,100 submitted, **0 drops (0.00% loss)**. Absorbed entire burst.
+  - `sat_bp_256kb`: 2,107 hooks, 805 submitted, **1,302 drops (61.79% loss)**. Theoretical capacity: ~762; observed: 805.
+  - `sat_bp_64kb`: 2,104 hooks, 229 submitted, **1,875 drops (89.12% loss)**. Theoretical capacity: ~190; observed: 229.
+  - **Accounting Conservation:** In all cases, $\text{Hooks} = \text{Submissions} + \text{Drops}$ with 100% precision.
+  - **Recovery:** Once reader resumed, all buffered events drained cleanly without process death or data corruption.
+
 
 
 
