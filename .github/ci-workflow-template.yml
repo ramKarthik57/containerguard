@@ -1,0 +1,89 @@
+# ContainerGuard: Continuous Integration Workflow Template
+# To enable this workflow on GitHub Actions:
+# 1. Ensure your GitHub Personal Access Token or OAuth App has the 'workflow' scope.
+# 2. Copy or move this file to '.github/workflows/ci.yml'.
+# 3. Commit and push to master.
+
+name: ContainerGuard CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  static-analysis:
+    name: Go Static Analysis & Race Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.8'
+          cache: true
+
+      - name: Verify Go Formatting (gofmt)
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Error: The following files require gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run Go Vet
+        run: go vet ./...
+
+      - name: Run Unit Tests with Race Detector
+        run: go test -v -race -count=1 ./internal/...
+
+  markdown-link-check:
+    name: Markdown Relative Link Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Verify Relative Markdown Links
+        run: |
+          python3 -c '
+          import os, re, sys
+          broken = []
+          md_files = []
+          for root, dirs, files in os.walk("."):
+              if ".git" in root:
+                  continue
+              for f in files:
+                  if f.endswith(".md"):
+                      md_files.append(os.path.join(root, f))
+          link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+          for path in md_files:
+              with open(path, "r", encoding="utf-8") as f:
+                  content = f.read()
+              cleaned = re.sub(r"```.*?```", "", content, flags=re.DOTALL)
+              for match in link_pattern.finditer(cleaned):
+                  target = match.group(2).strip()
+                  if target.startswith("http://") or target.startswith("https://") or target.startswith("#") or target.startswith("mailto:"):
+                      continue
+                  target_path = target.split("#")[0]
+                  if not target_path:
+                      continue
+                  resolved = os.path.normpath(os.path.join(os.path.dirname(path), target_path))
+                  if not os.path.exists(resolved):
+                      broken.append((path, target, resolved))
+          if broken:
+              print(f"FAILED: Found {len(broken)} broken relative links:")
+              for b in broken:
+                  print(f"  {b[0]}: {b[1]} -> {b[2]}")
+              sys.exit(1)
+          print(f"SUCCESS: All relative links in {len(md_files)} markdown files are valid!")
+          '

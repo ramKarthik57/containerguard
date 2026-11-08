@@ -18,7 +18,9 @@ The ContainerGuard project takes security vulnerabilities seriously.
 If you identify a security defect, kernel panic vulnerability, permission escalation flaw, or telemetry bypass vulnerability:
 
 1. **Do not create a public GitHub issue.**
-2. Report the vulnerability privately via **GitHub Private Vulnerability Reporting** (Security tab $\to$ Report a vulnerability) under the repository `ramKarthik57/containerguard`.
+2. Report the vulnerability privately:
+   - **GitHub Private Vulnerability Advisory:** If enabled on the repository, navigate to the **Security** tab $\to$ **Report a vulnerability** under `ramKarthik57/containerguard`.
+   - **Direct Maintainer Contact:** If Private Vulnerability Reporting is unavailable or inactive, contact the repository maintainer directly via GitHub profile communications or open an advisory inquiry to coordinate private key-encrypted or confidential disclosure.
 3. Provide:
    - Detailed description of the vulnerability and attack vector.
    - Host environment details (kernel version, cgroup mode, Docker version).

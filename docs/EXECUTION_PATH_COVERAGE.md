@@ -81,16 +81,21 @@ Each execution path was evaluated using `bin/test_exec_paths` and containerized 
 
 ## 3. Detailed Empirical Accounting
 
-Extracted directly from `docs/evidence/phase_i/execution_path_report.json`:
+The authoritative verification run captured exactly **89 events** with 100.0% delivery and zero drops.
+
+> [!NOTE]
+> **Experimental History Note:** An earlier preliminary dry run prior to integrating the standalone setuid binary (`cg_setuid_test`) and cgroup migration validation yielded 72 events. The authoritative milestone test suite captured **89 events**, incorporating all 12 target execution pathways and credential inspections.
+
+Extracted directly from the authoritative evidence artifact [`evidence/phase_i/execution_path_report.json`](evidence/phase_i/execution_path_report.json):
 
 ```json
 {
   "summary": {
-    "total_events_captured": 72,
-    "kernel_hook_calls": 72,
-    "kernel_submissions": 72,
+    "total_events_captured": 89,
+    "kernel_hook_calls": 89,
+    "kernel_submissions": 89,
     "kernel_reserve_drops": 0,
-    "userspace_decoded": 72,
+    "userspace_decoded": 89,
     "conservation_satisfied": true,
     "delivery_rate_percent": 100.0
   },
@@ -98,8 +103,8 @@ Extracted directly from `docs/evidence/phase_i/execution_path_report.json`:
     "execveat_invocations": 2,
     "at_empty_path_invocations": 1,
     "path_truncated_events": 1,
-    "comm_truncated_events": 34,
-    "committed_executions": 70,
+    "comm_truncated_events": 41,
+    "committed_executions": 87,
     "failed_execution_attempts": 2,
     "cgroup_migrated_events": 1
   }

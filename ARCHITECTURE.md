@@ -1,8 +1,8 @@
 # ContainerGuard System Architecture & Engineering Design
 
 **Release Milestone:** ContainerGuard 50% Verified Milestone  
-**Target Platform:** Linux 6.x+ (Tested on Linux 6.18.33.1 WSL2 / x86_64)  
-**Implementation Languages:** C (eBPF CO-RE), Go 1.24+ (Userspace Control Plane)
+**Target Platform:** Linux 6.x+ with BTF (Empirically verified on Linux 6.18.33.1-microsoft-standard-WSL2 / x86_64)  
+**Implementation Languages:** C (eBPF CO-RE), Go 1.26.8 (Userspace Control Plane per `go.mod`)
 
 ---
 
@@ -72,7 +72,10 @@ flowchart TD
 ## 3. Kernel Subsystem Architecture (`bpf/execve_events.c`)
 
 ### 3.1 Tracepoint Interception Strategy
-ContainerGuard coordinates 5 specific kernel tracepoints to achieve 100% execution coverage without missing failed syscalls or falling victim to namespace concealment:
+ContainerGuard coordinates 5 specific kernel tracepoints to provide comprehensive execution-path visibility across monitored execve and execveat pathways without missing failed syscalls or falling victim to namespace concealment:
+
+> [!NOTE]
+> **Kernel Compatibility & Portability Qualification:** The eBPF kernel engine is compiled with Clang using BPF CO-RE (`vmlinux.h`) and BTF type relocations. While CO-RE provides the architectural mechanism for cross-kernel struct layout portability, empirical verification has been conducted specifically on `Linux 6.18.33.1-microsoft-standard-WSL2`. Compatibility across untested upstream distributions or older kernels requires independent empirical testing.
 
 | Tracepoint Location | Kernel Event | Purpose & Handled Semantics | Emitted Flags |
 | :--- | :--- | :--- | :--- |

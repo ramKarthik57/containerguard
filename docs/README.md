@@ -36,6 +36,7 @@ The [`docs/`](.) directory contains formal empirical evaluation reports and data
 | **[Detection Engine Validation](DETECTION_VALIDATION.md)** | Evaluation of rules `CG-RULE-001`, `002`, `003` against labelled corpus | 100% Precision, 100% Recall on labelled benchmark suite |
 | **[Overhead Benchmarking Report](OVERHEAD_EVALUATION.md)** | Amortized execution latency, CPU footprint, and RSS memory usage | Descriptive mean overhead: 4.71% ($10.22\ \mu\text{s}$ wall-clock delta) |
 | **[GitHub Publication Report](GITHUB_PUBLICATION_REPORT.md)** | Record of initial GitHub repository creation, tag, and asset publication | Private repository initialized at `ramKarthik57/containerguard` |
+| **[Experiment Provenance Manifest](EXPERIMENT_PROVENANCE_MANIFEST.md)** | Reproducibility manifest: source commits, binary digests, commands, and evidence paths | End-to-end provenance mapping across Experiments 1–5 |
 
 ---
 

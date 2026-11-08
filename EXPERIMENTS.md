@@ -20,6 +20,9 @@ ContainerGuard was subjected to a five-part experimental evaluation designed to 
 
 ## 2. Catalog of Experimental Suites
 
+> [!TIP]
+> **Reproducibility Manifest:** For complete parameter matrices, source commits, binary SHA-256 hashes, exact execution commands, and raw evidence links for every experiment, see the [Experiment Provenance & Reproducibility Manifest](docs/EXPERIMENT_PROVENANCE_MANIFEST.md).
+
 ```mermaid
 flowchart LR
     E1["Exp 1: Baseline Attribution<br/>(Phase F)"] --> E2["Exp 2: Telemetry Stress<br/>1k–25k (Phase H)"]
