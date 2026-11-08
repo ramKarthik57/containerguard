@@ -187,3 +187,31 @@
   - Attack event `ALERT-1028-CG-RULE-002` (Execution from writable directory `/tmp/exploit_sim.sh` inside container `cg-test-b-event-test`) was successfully captured, attributed, alerted, and recorded with full parent lineage intact.
 - **Archival:** Full empirical evidence preserved in `docs/evidence/phase_h/stress_1000/` (`report.json`, `alerts.jsonl`, `events.jsonl`, `daemon.log`).
 
+### Entry 007 - 2026-11-08: Complete Phase H Multi-Tier Telemetry Stress Benchmarking (5k, 10k, 25k)
+- **Status:** Completed and Verified.
+- **Git Commit:** Following `cb79c6b`
+- **Workload Scaling:**
+  - Executed Tiers 2, 3, and 4 via `scripts/stress_test.sh`:
+    - Tier 2 (5,000 target): 5,027 hooks in 2.82s (1,781.6 events/sec).
+    - Tier 3 (10,000 target): 10,027 hooks in 5.31s (1,889.1 events/sec).
+    - Tier 4 (25,000 target): 25,032 hooks in 13.02s (1,923.0 events/sec).
+  - Total monitored execution events across all runs: 41,126.
+- **Zero Loss Telemetry:**
+  - Ring buffer reservation drops: 0 across all 41,126 events.
+  - Cgroup map failures: 0.
+  - Userspace decode failures: 0.
+  - Telemetry delivery rate: 100.00% across all tiers.
+- **Empirical Multi-Core Watermark Validation:**
+  - In Tier 4 (25,000 events), 1 transient multi-core out-of-order event commit occurred across the 4 concurrent worker processes.
+  - The `SequenceTracker` watermark sliding window (1,024 capacity) successfully held the gap and absorbed the reordered event without triggering false sequence gap alerts (`sequence_gaps_detected: 0`, `reordered_events: 1`).
+- **Attribution Ratio Convergence:**
+  - Workload was generated with 3 container streams and 1 host stream (75.00% theoretical ratio).
+  - Observed container resolutions: Tier 2 = 74.86%, Tier 3 = 74.92%, Tier 4 = 74.96% (within 0.04% of ground truth).
+  - Zero false-positive host or container misclassifications.
+- **Queue Saturation Dynamics:**
+  - Peak pending queue depth plateaued at 1,371 entries at 25,000 events (33.5% of 4,096 capacity), demonstrating that userspace drain rate keeps pace with high-throughput continuous generation without queue overflow.
+- **Alert Preservation:**
+  - Writable mount execution alerts (`ALERT-5022-CG-RULE-002`, `ALERT-10022-CG-RULE-002`) and shell spawner alerts (`CG-RULE-003`) were captured with lineage preserved under maximum workload concurrency.
+- **Archival:** Complete logs and reports stored in `docs/evidence/phase_h/` (`stress_5000/`, `stress_10000/`, `stress_25000/`).
+
+

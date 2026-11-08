@@ -89,27 +89,30 @@ Executed via `sudo ./scripts/stress_test.sh <count>`:
 
 ### Empirical Results Summary
 
-| Metric | Tier 1 (1,000 Target) | Tier 2 (5,000 Target) | Tier 3 (10,000 Target) | Tier 4 (25,000 Target) |
+| Metric | Tier 1 (1k Target) | Tier 2 (5k Target) | Tier 3 (10k Target) | Tier 4 (25k Target) |
 |---|---|---|---|---|
-| **Workload Duration** | **0.798s** | *Pending* | *Pending* | *Pending* |
-| **Observed Kernel Hooks** | **1,040** | *Pending* | *Pending* | *Pending* |
-| **Ring Buffer Submissions** | **1,040** | *Pending* | *Pending* | *Pending* |
-| **Ring Buffer Drops** | **0 (0.00%)** | *Pending* | *Pending* | *Pending* |
-| **Cgroup Map Failures** | **0** | *Pending* | *Pending* | *Pending* |
-| **Userspace Records Received** | **1,040** | *Pending* | *Pending* | *Pending* |
-| **Userspace Decoded Records** | **1,040** | *Pending* | *Pending* | *Pending* |
-| **Sequence Gaps Detected** | **0** | *Pending* | *Pending* | *Pending* |
-| **Reordered Events Handled** | **0** | *Pending* | *Pending* | *Pending* |
-| **Attribution Resolved (Containers)** | **762** | *Pending* | *Pending* | *Pending* |
-| **Attribution Unresolved (Non-Cont)**| **278** | *Pending* | *Pending* | *Pending* |
-| **Current Pending Queue Depth** | **0** | *Pending* | *Pending* | *Pending* |
-| **Peak Pending Queue Depth** | **277** | *Pending* | *Pending* | *Pending* |
-| **Event Throughput** | **1,302.6 events/s** | *Pending* | *Pending* | *Pending* |
-| **Telemetry Delivery Rate** | **100.00%** | *Pending* | *Pending* | *Pending* |
-| **Critical Alert Retention** | **100% (Alert 1028)** | *Pending* | *Pending* | *Pending* |
+| **Workload Duration** | **0.80s** | **2.82s** | **5.31s** | **13.02s** |
+| **Observed Kernel Hooks** | **1,040** | **5,027** | **10,027** | **25,032** |
+| **Ring Buffer Submissions** | **1,040** | **5,027** | **10,027** | **25,032** |
+| **Ring Buffer Drops** | **0 (0.00%)** | **0 (0.00%)** | **0 (0.00%)** | **0 (0.00%)** |
+| **Cgroup Map Failures** | **0** | **0** | **0** | **0** |
+| **Userspace Records Received** | **1,040** | **5,027** | **10,027** | **25,032** |
+| **Userspace Decoded Records** | **1,040** | **5,027** | **10,027** | **25,032** |
+| **Sequence Gaps Detected** | **0** | **0** | **0** | **0** |
+| **Reordered Events Handled** | **0** | **0** | **0** | **1 (Watermark reconciled)** |
+| **Attribution Resolved (Containers)** | **762 (73.3%)** | **3,763 (74.9%)** | **7,512 (74.9%)** | **18,764 (75.0%)** |
+| **Attribution Unresolved (Non-Cont)**| **278 (26.7%)** | **1,264 (25.1%)** | **2,515 (25.1%)** | **6,268 (25.0%)** |
+| **Current Pending Queue Depth** | **0** | **0** | **0** | **0** |
+| **Peak Pending Queue Depth** | **277** | **1,259** | **1,361** | **1,371** |
+| **Event Throughput** | **1,302.6 events/s** | **1,781.6 events/s** | **1,889.1 events/s** | **1,923.0 events/s** |
+| **Telemetry Delivery Rate** | **100.00%** | **100.00%** | **100.00%** | **100.00%** |
+| **Critical Alert Retention** | **100% (Alert 1028)** | **100% (Alert 5022)** | **100% (Alert 10022)** | **100% (Shell Alerts)** |
 
 ### Key Findings
-1. **Zero Telemetry Loss:** At 1,302 events/second, the 16 MB ring buffer experienced zero reservation drops and zero userspace sequence gaps.
-2. **Attribution Accuracy:** 100% of container executions (762 events) were correctly resolved to their respective containers. Host background executions were cleanly segregated as non-container events without false container claims.
-3. **Detection Retention:** Critical security violations (Alert 1028: `CG-RULE-002` execution from `/tmp`) were detected, attributed, and stored without loss or delay despite intense concurrency.
+1. **Zero Telemetry Loss Across 41,126 Events:** Over all four tiers, 41,126 total execution events were captured with exactly zero ring buffer reservation drops (`CG_METRIC_RB_RESERVE_DROPS = 0`) and zero sequence gaps.
+2. **Attribution Ratio Convergence:** As sample size increased, container attribution resolved events converged from 73.3% to 74.96%, matching the expected 75.00% 3:1 container-to-host workload split to within 0.04%. Zero false-positive container attributions occurred.
+3. **Queue Bounding Dynamics:** Peak pending queue depth plateaued at 1,371 items during continuous 25,000-event execution, utilizing only 33.5% of the 4,096 capacity with zero queue overflows.
+4. **Live Multi-Core Watermark Validation:** In Tier 4, the sliding watermark sequence tracker detected and reconciled 1 transient multi-core out-of-order event commit, preventing false loss alarms and proving the watermark algorithm on a live multi-core Linux kernel.
+5. **Detection Retention Under Concurrency:** In-band exploit scripts executed from writable directories (`CG-RULE-002`) and shell executions (`CG-RULE-003`) were captured, alerted, and lineage-linked under maximum concurrent load.
+
 

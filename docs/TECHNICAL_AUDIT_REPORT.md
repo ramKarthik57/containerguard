@@ -217,45 +217,44 @@ Processed Events                -               78                DRAINED
 
 ## 7. Phase H: Telemetry Stress Testing and Rate Limits Evaluation
 
-**Execution Date:** 2026-11-08 04:40 UTC  
-**Harness:** `sudo ./scripts/stress_test.sh 1000`  
-**Concurrency Profile:** 4 concurrent execution streams (250 executions per stream): `cg-test-a`, `cg-test-b-event-test`, dedicated temporary container `cg-stress-worker`, and host processes.  
-**In-Band Threat Simulation:** `/tmp/exploit_sim.sh` injected into `cg-test-b-event-test` during active multi-stream burst.  
-**Archived Artifacts:** `docs/evidence/phase_h/stress_1000/{report.json, alerts.jsonl, events.jsonl, daemon.log}`
+**Execution Date:** 2026-11-08 04:40 - 04:49 UTC  
+**Harness:** `sudo ./scripts/stress_test.sh <1000 | 5000 | 10000 | 25000>`  
+**Concurrency Profile:** 4 concurrent execution streams (3 container streams: `cg-test-a`, `cg-test-b-event-test`, dedicated temporary container `cg-stress-worker`, and 1 host workload stream).  
+**Total Monitored Events:** 41,126 execution events.  
+**Archived Artifacts:** `docs/evidence/phase_h/{stress_1000, stress_5000, stress_10000, stress_25000}/`
 
-### 1. Empirical Results
-```json
-{
-  "timestamp": "2026-11-08T04:40:55.416989826Z",
-  "kernel_hook_invocations": 1040,
-  "kernel_ringbuf_reserve_drops": 0,
-  "kernel_ringbuf_submitted": 1040,
-  "kernel_cgroup_map_fails": 0,
-  "userspace_records_received": 1040,
-  "userspace_records_decoded": 1040,
-  "userspace_decode_failures": 0,
-  "attribution_pending_transitions": 278,
-  "current_pending_queue_depth": 0,
-  "peak_pending_queue_depth": 277,
-  "attribution_resolved": 762,
-  "attribution_unresolved": 278,
-  "attribution_stale_mapping": 0,
-  "attribution_host_confirmed": 0,
-  "userspace_queue_overflows": 0,
-  "sequence_gaps_detected": 0,
-  "reordered_events": 0,
-  "events_processed": 1030,
-  "processing_failures": 0,
-  "kernel_drop_rate_pct": 0,
-  "userspace_loss_count": 0
-}
+### 1. Empirical Cross-Tier Evaluation Matrix
+```
+========================================================================================
+METRIC / TIER                       1,000 WORKLOAD   5,000 WORKLOAD  10,000 WORKLOAD  25,000 WORKLOAD
+========================================================================================
+Workload Duration                   0.80s            2.82s           5.31s            13.02s
+Observed Kernel Hooks               1,040            5,027           10,027           25,032
+Ring Buffer Submissions             1,040            5,027           10,027           25,032
+Ring Buffer Reserve Drops           0 (0.00%)        0 (0.00%)       0 (0.00%)        0 (0.00%)
+Cgroup Map Update Failures          0                0               0                0
+Userspace Records Received          1,040            5,027           10,027           25,032
+Userspace Records Decoded           1,040            5,027           10,027           25,032
+Decode Failures                     0                0               0                0
+Sequence Gaps Detected              0                0               0                0
+Transient Reordered Commits         0                0               0                1 (Absorbed)
+Container Attributed Events         762 (73.3%)      3,763 (74.9%)   7,512 (74.9%)    18,764 (75.0%)
+Host Unresolved Events              278 (26.7%)      1,264 (25.1%)   2,515 (25.1%)    6,268 (25.0%)
+False Container Attributions        0                0               0                0
+Cumulative Pending Transitions      278              1,264           2,515            6,268
+Peak Pending Queue Depth            277              1,259           1,361            1,371
+Userspace Queue Overflows           0                0               0                0
+Sustained Event Throughput          1,302.6 ev/s     1,781.6 ev/s    1,889.1 ev/s     1,923.0 ev/s
+Telemetry Delivery Rate             100.00%          100.00%         100.00%          100.00%
+Critical Threat Alerts Preserved    100%             100%            100%             100%
+========================================================================================
 ```
 
-### 2. Performance Summary
-- **Workload Duration:** 0.798 seconds.
-- **Sustained Event Throughput:** 1,302.6 events/second.
-- **Telemetry Delivery Rate:** 100.00% (zero ring buffer reserve drops, zero sequence gaps).
-- **Attribution Accuracy:** 762 container events resolved across 3 containers; 278 non-container host events segregated with zero false-positive container claims.
-- **Queue Dynamics:** Peak pending queue depth reached 277 (6.7% of 4,096 capacity), draining cleanly to 0 on exit.
-- **Threat Detection Fidelity:** Alert `ALERT-1028-CG-RULE-002` (Execution from writable directory `/tmp/exploit_sim.sh`) was preserved, alerted, and attributed with full lineage during the height of the stress burst.
+### 2. Research Conclusions & Boundary Verification
+1. **Telemetry Delivery Rate:** 100.00% delivery across all 41,126 execution events. The 16 MB kernel ring buffer provided headroom against reservation exhaustion even under intense 4-stream multi-core bursts.
+2. **Asymptotic Throughput:** Pipeline throughput scaled smoothly from 1,302 events/s to 1,923 events/s, bounded by WSL2 process creation speed rather than the eBPF event pipeline.
+3. **Queue Bounding Dynamics:** Peak pending queue depth reached steady-state equilibrium at 1,371 entries (33.5% of 4,096 capacity), demonstrating that parallel drain loops prevent unbounded memory growth during continuous firing.
+4. **Live Multi-Core Watermark Validation:** In Tier 4, exactly 1 out-of-order kernel ring buffer commit occurred; the sliding watermark sequence tracker held the gap and absorbed the commit without raising false telemetry loss alerts.
+5. **Attribution Ratio Convergence:** Container event attribution converged to 74.96%, matching the 75.00% theoretical ground truth ratio of the 3:1 workload distribution to within 0.04%.
+
 
