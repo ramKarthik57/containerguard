@@ -41,19 +41,19 @@ The build process is automated via [`scripts/build.sh`](scripts/build.sh), or ca
 > Running `./scripts/build.sh` compiles by default into an isolated output directory (`build/bin/` and `build/bpf/`). It computes the resulting SHA-256 digests and checks them against official milestone hashes while preserving the tracked release binaries (`bin/containerguard`, `bpf/execve_events.o`) unmodified. Pass `--overwrite-release` to explicitly write to `bin/` and `bpf/`.
 
 ### Step 1: Compile eBPF Kernel Program
-The eBPF program is compiled into a CO-RE (Compile Once – Run Everywhere) ELF 64-bit object. It embeds BTF type information, enabling dynamic offset relocation against the running kernel:
+The eBPF program is compiled into a CO-RE (Compile Once – Run Everywhere) ELF 64-bit object. It embeds BTF type information, enabling dynamic offset relocation against the running kernel. To prevent overwriting the tracked milestone release binaries, compile into `build/bpf/`:
 ```bash
-mkdir -p bpf bin
+mkdir -p build/bpf build/bin
 clang -g -O2 -target bpf \
   -D__TARGET_ARCH_x86 \
   -I/usr/include/x86_64-linux-gnu \
   -c bpf/execve_events.c \
-  -o bpf/execve_events.o
+  -o build/bpf/execve_events.o
 ```
 
 **Verification:** Confirm that the output object contains valid eBPF bytecode and maps:
 ```bash
-llvm-objdump -h bpf/execve_events.o
+llvm-objdump -h build/bpf/execve_events.o
 ```
 
 ### Step 2: Format and Lint Go Source
@@ -64,17 +64,21 @@ go vet ./...
 ```
 
 ### Step 3: Compile Userspace Control Plane
-Compile the ContainerGuard daemon binary:
+Compile the ContainerGuard daemon binary into `build/bin/`:
 ```bash
-go build -o bin/containerguard ./cmd/containerguard
+go build -o build/bin/containerguard ./cmd/containerguard
 ```
 
 ### Step 4: Verify Cryptographic Checksums
-Confirm that compiled binaries match the official release digests:
+Confirm the digests of the newly compiled development binaries, and compare them with the official release digests:
 ```bash
+# Newly compiled build artifacts:
+sha256sum build/bin/containerguard build/bpf/execve_events.o
+
+# Official frozen milestone release artifacts (immutable at b8f70f5):
 sha256sum bin/containerguard bpf/execve_events.o
 ```
-*Expected Hashes (Commit `b8f70f5`):*
+*Official Milestone Hashes (Commit `b8f70f5`):*
 - `bin/containerguard`: `cfee0d9675b653fdd7cda2629454a4839b1fd59ede0ba43f8bcd7ce7bebc93d0`
 - `bpf/execve_events.o`: `6ae519a012694f11c9ab514c1b13cafb4b8551fb8deadaf10dee817862717ef3`
 
@@ -110,8 +114,15 @@ go test -v -count=1 ./internal/telemetry
 > - **Do not add unprivileged users to the `docker` group in production environments.**
 
 ### Launching the Daemon
-Run the daemon interactively with standard parameters:
+Run the daemon interactively with standard parameters (using either the newly built development binary or the frozen release binary):
 ```bash
+# Option A: Run newly built development binary (build/)
+sudo ./build/bin/containerguard \
+  -bpf build/bpf/execve_events.o \
+  -metrics-interval 5s \
+  -pending-ttl 2s
+
+# Option B: Run official frozen milestone binary (bin/ and bpf/)
 sudo ./bin/containerguard \
   -bpf bpf/execve_events.o \
   -metrics-interval 5s \
@@ -121,8 +132,8 @@ sudo ./bin/containerguard \
 ### File-Based Audit Logging
 To persist captured events and security alerts to structured JSONL streams:
 ```bash
-sudo ./bin/containerguard \
-  -bpf bpf/execve_events.o \
+sudo ./build/bin/containerguard \
+  -bpf build/bpf/execve_events.o \
   -events-log /tmp/cg_events.jsonl \
   -alerts-log /tmp/cg_alerts.jsonl \
   -metrics-interval 5s

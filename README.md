@@ -533,9 +533,13 @@ cd containerguard
 
 ### 2. Verify Binary Hashes
 ```bash
+# Checksums of newly built artifacts:
+sha256sum build/bin/containerguard build/bpf/execve_events.o
+
+# Checksums of official frozen milestone release artifacts:
 sha256sum bin/containerguard bpf/execve_events.o
 ```
-*Official Release Checksums (`b8f70f5`):*
+*Official Milestone Checksums (`b8f70f5`):*
 - `bin/containerguard`: `cfee0d9675b653fdd7cda2629454a4839b1fd59ede0ba43f8bcd7ce7bebc93d0`
 - `bpf/execve_events.o`: `6ae519a012694f11c9ab514c1b13cafb4b8551fb8deadaf10dee817862717ef3`
 
@@ -546,7 +550,14 @@ sha256sum bin/containerguard bpf/execve_events.o
 
 ### 4. Run Daemon (Requires Interactive Sudo)
 ```bash
-# Always use interactive sudo authentication; never configure passwordless sudo
+# Option A: Run newly built development binary (build/)
+sudo ./build/bin/containerguard \
+  -bpf build/bpf/execve_events.o \
+  -events-log /tmp/cg_events.jsonl \
+  -alerts-log /tmp/cg_alerts.jsonl \
+  -metrics-interval 5s
+
+# Option B: Run official frozen milestone release binary (bin/ and bpf/)
 sudo ./bin/containerguard \
   -bpf bpf/execve_events.o \
   -events-log /tmp/cg_events.jsonl \

@@ -142,7 +142,13 @@ dispatch_test "setuid_transition" "${SETUID_RUNNER}"
 sudo rm -f "${SETUID_RUNNER}"
 
 # Persist dispatched PIDs into test_pids.json for rigorous verification
-python3 - "${TEST_PIDS_JSON}" << 'PYPIDEOF'
+PID_ARGS=()
+for k in "${!PIDS[@]}"; do
+    PID_ARGS+=("${k}=${PIDS[$k]}")
+    echo "  [PID] ${k} -> ${PIDS[$k]}"
+done
+
+python3 -c '
 import sys, json
 path = sys.argv[1]
 data = {}
@@ -152,10 +158,7 @@ for arg in sys.argv[2:]:
         data[k] = int(v)
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
-PYPIDEOF
-for k in "${!PIDS[@]}"; do
-    echo "  [PID] ${k} -> ${PIDS[$k]}"
-done
+' "${TEST_PIDS_JSON}" "${PID_ARGS[@]}"
 
 # 3. Containerized executions
 echo "[3/6] Dispatching containerized executions..."
@@ -245,15 +248,36 @@ if os.path.exists(daemon_log):
         if match:
             accounting = json.loads(match.group(1))
 
+# Required execution test keys that must be present in live runs
+REQUIRED_PID_KEYS = [
+    "standard_execve",
+    "direct_syscall",
+    "execveat_relative",
+    "execveat_memfd",
+    "shebang",
+    "symlink",
+    "fail_enoent",
+    "fail_eacces",
+    "path_truncation",
+    "comm_truncation",
+    "static_elf",
+    "setuid_transition"
+]
+
 # Load dispatched PIDs for process-specific correlation
 dispatched_pids = {}
 if os.path.exists(test_pids_path):
     with open(test_pids_path, "r") as f:
         dispatched_pids = json.load(f)
-
-# When evaluating historical baseline evidence where test_pids.json was not generated,
-# reconstruct test-invocation TGIDs from the ordered sequence of test_exec_paths executions
-if not dispatched_pids:
+    
+    missing_keys = [k for k in REQUIRED_PID_KEYS if k not in dispatched_pids]
+    if missing_keys:
+        print(f"\n[!] PID VALIDATION FAILURE: test_pids.json is missing required test keys: {missing_keys}")
+        sys.exit(1)
+else:
+    # Historical baseline archive evaluation fallback
+    # Only permitted when evaluating archives that genuinely lack test_pids.json
+    print("[*] Notice: test_pids.json not found; reconstructing test TGIDs from historical event sequence...")
     test_tgids = []
     for e in events:
         tg = e.get("tgid")
@@ -358,7 +382,22 @@ has_eacces = any(
     for e in events
 )
 
-# 9. Setuid transition: genuine UID 1000 -> EUID 0 credential elevation
+# 9. Pathname and Comm truncation boundary enforcement
+pid_path_trunc = dispatched_pids.get("path_truncation")
+has_path_trunc = any(
+    (e.get("tgid") == pid_path_trunc if pid_path_trunc else True)
+    and e.get("path_truncated")
+    for e in events
+)
+
+pid_comm_trunc = dispatched_pids.get("comm_truncation")
+has_comm_trunc = any(
+    (e.get("tgid") == pid_comm_trunc if pid_comm_trunc else True)
+    and e.get("comm_truncated")
+    for e in events
+)
+
+# 10. Setuid transition: genuine UID 1000 -> EUID 0 credential elevation
 pid_setuid = dispatched_pids.get("setuid_transition")
 has_setuid_transition = any(
     (e.get("tgid") == pid_setuid if pid_setuid else True)
@@ -369,24 +408,53 @@ has_setuid_transition = any(
     for e in events
 )
 
-# 10. Container workload attribution and cgroup migration
+# 11. Container workload attribution and cgroup migration
 has_container_event = any(e.get("attribution_state") == "RESOLVED" for e in events)
+
+# Validate presence and completeness of final telemetry integrity report
+if not accounting:
+    print(f"\n[!] ACCOUNTING FAILURE: No final telemetry accounting report found in {daemon_log}!")
+    sys.exit(1)
 
 hook_calls = accounting.get("kernel_hook_invocations", 0)
 submitted = accounting.get("kernel_ringbuf_submitted", 0)
 drops = accounting.get("kernel_ringbuf_reserve_drops", 0)
 decoded = accounting.get("userspace_records_decoded", 0)
+decode_failures = accounting.get("userspace_decode_failures", 0)
+queue_overflows = accounting.get("userspace_queue_overflows", 0)
+sequence_gaps = accounting.get("sequence_gaps_detected", 0)
+userspace_loss = accounting.get("userspace_loss_count", 0)
+
+if hook_calls == 0 or submitted == 0:
+    print(f"\n[!] ACCOUNTING FAILURE: Zero hook invocations ({hook_calls}) or submissions ({submitted}) recorded!")
+    sys.exit(1)
 
 conservation_valid = (hook_calls == submitted + drops)
 if not conservation_valid:
-    print(f"\n[!] INVARIANT VIOLATION: Hooks ({hook_calls}) != Submissions ({submitted}) + Drops ({drops})")
+    print(f"\n[!] CONSERVATION VIOLATION: Hooks ({hook_calls}) != Submissions ({submitted}) + Drops ({drops})")
     sys.exit(1)
 
-if decoded > submitted:
-    print(f"\n[!] BENCHMARK INVALIDATED: Decoded ({decoded}) > Submissions ({submitted})!")
+if decoded != submitted:
+    print(f"\n[!] INCOMPLETE TELEMETRY DELIVERY: Decoded ({decoded}) != Submissions ({submitted}) (Loss: {submitted - decoded})")
     sys.exit(1)
 
-delivery_rate_pct = (decoded / submitted * 100.0) if submitted > 0 else 100.0
+if decode_failures > 0:
+    print(f"\n[!] DECODE FAILURE: {decode_failures} record decode failures!")
+    sys.exit(1)
+
+if queue_overflows > 0:
+    print(f"\n[!] QUEUE OVERFLOW: {queue_overflows} userspace queue overflows!")
+    sys.exit(1)
+
+if sequence_gaps > 0:
+    print(f"\n[!] SEQUENCE INTEGRITY FAILURE: {sequence_gaps} sequence gaps detected!")
+    sys.exit(1)
+
+if userspace_loss > 0:
+    print(f"\n[!] USERSPACE LOSS FAILURE: {userspace_loss} lost events accounted!")
+    sys.exit(1)
+
+delivery_rate_pct = (decoded / submitted * 100.0) if submitted > 0 else 0.0
 
 report = {
     "summary": {
@@ -395,6 +463,10 @@ report = {
         "kernel_submissions": submitted,
         "kernel_reserve_drops": drops,
         "userspace_decoded": decoded,
+        "userspace_decode_failures": decode_failures,
+        "userspace_queue_overflows": queue_overflows,
+        "sequence_gaps_detected": sequence_gaps,
+        "userspace_loss_count": userspace_loss,
         "conservation_satisfied": conservation_valid,
         "delivery_rate_percent": round(delivery_rate_pct, 4)
     },
@@ -409,6 +481,8 @@ report = {
         "setuid_euid_transition": has_setuid_transition,
         "failed_exec_enoent": has_enoent,
         "failed_exec_eacces": has_eacces,
+        "pathname_truncation": has_path_trunc,
+        "comm_truncation": has_comm_trunc,
         "container_workload_attribution": has_container_event,
         "cgroup_migration_tracking": cgroup_migrated_count > 0
     },

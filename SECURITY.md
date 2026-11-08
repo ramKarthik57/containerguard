@@ -19,8 +19,8 @@ If you identify a security defect, kernel panic vulnerability, permission escala
 
 1. **Do not create a public GitHub issue.**
 2. Report the vulnerability privately:
-   - **GitHub Private Vulnerability Advisory:** If enabled on the repository, navigate to the **Security** tab $\to$ **Report a vulnerability** under `ramKarthik57/containerguard`.
-   - **Direct Maintainer Contact:** If GitHub Private Vulnerability Reporting is unavailable, send disclosure details to the repository maintainer at `76729402+ramKarthik57@users.noreply.github.com` (with subject prefix `[ContainerGuard Security Advisory]`) or coordinate confidential disclosure via the GitHub profile [ramKarthik57](https://github.com/ramKarthik57).
+   - **GitHub Private Vulnerability Advisory (Primary Channel):** Navigate to the **Security** tab $\to$ **Advisories** $\to$ **Report a vulnerability** under `ramKarthik57/containerguard`. This provides an encrypted, authenticated, and access-controlled disclosure workflow directly with repository maintainers.
+   - **Confidential Maintainer Contact (Fallback):** If GitHub Private Vulnerability Reporting is unavailable, coordinate confidential disclosure directly with the repository owner via GitHub profile [ramKarthik57](https://github.com/ramKarthik57) to establish an encrypted exchange channel prior to transmitting technical vulnerability details. Do not submit sensitive vulnerability payloads to public issues, discussions, or unverified noreply commit aliases.
 3. Provide:
    - Detailed description of the vulnerability and attack vector.
    - Host environment details (kernel version, cgroup mode, Docker version).
