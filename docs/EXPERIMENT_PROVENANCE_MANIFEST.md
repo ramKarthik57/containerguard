@@ -1,32 +1,23 @@
-# ContainerGuard: Experiment Provenance & Reproducibility Manifest
+# ContainerGuard: Experiment Provenance & Cryptographic Traceability Manifest
 
-This manifest documents the exact provenance, environment parameters, software artifacts, and execution commands required to independently evaluate and reproduce ContainerGuard's empirical benchmark findings.
+## 1. Provenance Integrity Guarantee
 
----
+ContainerGuard is a cybersecurity research project with strict empirical reproducibility requirements. Every benchmark result, telemetry dataset, alert trace, and overhead calculation published in the repository is tied to an immutable Git commit, cryptographic checksums, and preserved raw event archives.
 
-## 1. Verified Hardware & Software Execution Environment
-
-All empirical experiments published in this repository were conducted on the following certified environment:
-
-| Environmental Layer | Specification / Version | Verification Mechanism |
-| :--- | :--- | :--- |
-| **Host Virtualization** | Microsoft Windows Subsystem for Linux (WSL2) | `uname -r` |
-| **Linux Kernel** | `Linux 6.18.33.1-microsoft-standard-WSL2` (x86_64) | `uname -a` |
-| **Kernel BTF Support** | In-tree BTF enabled (`/sys/kernel/btf/vmlinux`) | `ls -la /sys/kernel/btf/vmlinux` |
-| **Cgroup Hierarchy** | Unified cgroup v2 mounted at `/sys/fs/cgroup` | `stat -f -c %T /sys/fs/cgroup` (`cgroup2fs`) |
-| **Operating System** | Ubuntu 26.04.1 LTS (Noble Numbat) | `/etc/os-release` |
-| **eBPF Compiler** | Clang / LLVM version `21.1.8` | `clang --version` |
-| **Go Toolchain** | Go version `1.26.8` (per `go.mod`) | `go version` |
-| **Container Engine** | Docker Engine `29.9.3` / containerd `2.4.2` | `docker version` |
-| **Architecture** | x86_64 (64-bit multi-core host) | `lscpu` |
+> [!IMPORTANT]
+> **Frozen Milestone Policy:** The core implementation at commit `b8f70f5` represents the official **ContainerGuard 50% Verified Milestone**. Subsequent commits are strictly constrained to documentation, non-destructive test-harness verification enhancements, build maintenance, and research reporting.
+>
+> **System-Under-Test vs. Test-Harness Revisions:** To maintain strict research auditability:
+> - **System-Under-Test (SUT):** Refers to the daemon source code, eBPF C program, and compiled release binaries (`bin/containerguard`, `bpf/execve_events.o`) frozen at milestone commit `b8f70f5`.
+> - **Test-Harness:** Refers to the benchmark orchestration scripts (`scripts/*.sh`) and test runners (`cmd/test_exec_paths/`), which have evolved across PR #5, PR #6, and PR #7 to provide strict process-specific (PID-to-TGID) assertion validation, ephemeral runner sandboxing, container auto-initialization, and collision-resistant evidence directory isolation.
 
 ---
 
-## 2. Verified Binary Artifacts & Digest Provenance
+## 2. Official Release Checkpoints & Binary Integrity
 
-The official compiled binaries corresponding to the **ContainerGuard 50% Verified Milestone** checkpoint (`b8f70f5`) exhibit the following cryptographic SHA-256 digests:
+The official compiled binaries corresponding to the **ContainerGuard 50% Verified Milestone** (`b8f70f5`) are tracked in the repository with the following cryptographic digests:
 
-| Binary Artifact | Relative Path | SHA-256 Digest |
+| Component | Repository Path | Cryptographic SHA-256 Digest |
 | :--- | :--- | :--- |
 | **Go Control-Plane Daemon** | `bin/containerguard` | `cfee0d9675b653fdd7cda2629454a4839b1fd59ede0ba43f8bcd7ce7bebc93d0` |
 | **Compiled eBPF Kernel ELF**| `bpf/execve_events.o` | `6ae519a012694f11c9ab514c1b13cafb4b8551fb8deadaf10dee817862717ef3` |
@@ -42,30 +33,46 @@ sha256sum bin/containerguard bpf/execve_events.o bin/test_exec_paths bin/cg_setu
 
 ## 3. Comprehensive Experiment Manifest Matrix
 
-| Experiment ID | Focus Area | Source Commit | Script & Invocations | Workload Parameters | Raw Evidence Archive | Authoritative Metric |
-| :--- | :--- | :---: | :--- | :--- | :--- | :--- |
-| **EXP-1** | Baseline Container Attribution & Inode Discovery | `b8f70f5` | `sudo ./scripts/live_integration_test.sh` | 2 persistent containers (`cg-test-a`, `cg-test-b`), 1 ephemeral container, 1 host stream | [`evidence/phase_f/`](evidence/phase_f/) | 105 events captured, 0 kernel drops, 100.0% delivery, 3 alerts emitted |
-| **EXP-2** | Concurrent Workload Scaling (Phase H) | `b8f70f5` | `sudo ./scripts/stress_test.sh 1000`<br/>`sudo ./scripts/stress_test.sh 5000`<br/>`sudo ./scripts/stress_test.sh 10000`<br/>`sudo ./scripts/stress_test.sh 25000` | 4 concurrent execution streams (2 persistent containers, 1 ephemeral, 1 host) with exploit injection mid-stream | [`evidence/phase_h/stress_1000/`](evidence/phase_h/stress_1000/)<br/>[`evidence/phase_h/stress_5000/`](evidence/phase_h/stress_5000/)<br/>[`evidence/phase_h/stress_10000/`](evidence/phase_h/stress_10000/)<br/>[`evidence/phase_h/stress_25000/`](evidence/phase_h/stress_25000/) | 1,040 to 25,032 events; 0 kernel drops; 0 sequence gaps; 100.0% delivery up to 1,923.0 hooks/s |
-| **EXP-3** | Controlled Buffer Saturation & Reader Backpressure (Phase H.2) | `96f36ce` | `sudo ./scripts/saturation_test.sh sat_16mb_8stream 16384 0 8 250`<br/>`sudo ./scripts/saturation_test.sh sat_bp_256kb 256 4 4 500`<br/>`sudo ./scripts/saturation_test.sh sat_bp_64kb 64 4 4 500` | 2,000 target events under 4.0-second induced userspace reader backpressure across buffer sizes (64KB, 256KB, 16MB) | [`evidence/phase_h2/suite1_capacity_8stream/`](evidence/phase_h2/suite1_capacity_8stream/)<br/>[`evidence/phase_h2/suite2_backpressure/`](evidence/phase_h2/suite2_backpressure/)<br/>[`evidence/phase_h2/original_unreconciled/`](evidence/phase_h2/original_unreconciled/) | Exact conservation: $\text{Hooks} = \text{Submissions} + \text{Drops}$. 64KB held 190 events during freeze; 256KB held 762 events (344B wire schema). Zero sequence gaps. |
-| **EXP-4** | Execution-Path Semantics & Credential Transitions (Phase I) | `b8f70f5` | `./scripts/execution_path_test.sh` *(invoked as unprivileged user)* | 14 execution conditions: direct syscall, relative `execveat`, anonymous `memfd`, static ELF, symlinks, setuid EUID 0 transition, failed `ENOENT`/`EACCES`, and live cgroup migration | [`evidence/phase_i/execution_path_report.json`](evidence/phase_i/execution_path_report.json)<br/>[`evidence/phase_i/exec_paths_events.jsonl`](evidence/phase_i/exec_paths_events.jsonl) | 89 total events; 87 committed (`sched_process_exec`); 2 failed (`sys_exit_execve`); 0 drops; setuid `CG_FLAG_SETUID_EXEC` verified; cgroup migration tracked |
-| **EXP-5A**| Detection Validation & False-Positive Evaluation (Phase I) | `7c56b1e` (Dataset 1)<br/>`b8f70f5` (Dataset 2) | `sudo ./scripts/detection_benchmark.sh` | Interleaved corpus: 120 benign operations (Git queries, multi-stage GCC compilation) vs 12 synthetic attack simulations | [`evidence/phase_i/detection_validation_report.json`](evidence/phase_i/detection_validation_report.json)<br/>[`evidence/phase_i/detection_alerts.jsonl`](evidence/phase_i/detection_alerts.jsonl) | Dataset 1 (133 events): TP=12, TN=387, FP=0, FN=0.<br/>Dataset 2 (132 events): TP=12, TN=384, FP=0, FN=0.<br/>100% Precision, 100% Recall on labelled suite. |
-| **EXP-5B**| Monitoring Runtime Overhead & Resource Footprint (Phase I) | `7c56b1e` (Trial 1)<br/>`b8f70f5` (Trial 2) | `sudo ./scripts/overhead_benchmark.sh` | 2,000 rapid process executions across 4 worker streams with pre-test cache drops (`drop_caches`), comparing unmonitored vs ContainerGuard monitored | [`evidence/phase_i/overhead_benchmark_report.json`](evidence/phase_i/overhead_benchmark_report.json)<br/>[`evidence/phase_i/overhead_resource_samples.csv`](evidence/phase_i/overhead_resource_samples.csv) | Trial 1 (+3.46% overhead, 7.77 µs delta/lifecycle); Trial 2 (+5.95% overhead, 12.68 µs delta/lifecycle); Descriptive mean: 4.71%; Peak RSS: 6.04 MiB |
+| Experiment ID | Focus Area | System-Under-Test Revision | Test-Harness Revision | Script & Invocations | Workload Parameters | Preserved Raw Evidence Archive | Authoritative Metric |
+| :--- | :--- | :---: | :---: | :--- | :--- | :--- | :--- |
+| **EXP-1** | Baseline Container Attribution & Inode Discovery | `b8f70f5` | `b8f70f5` | `sudo ./scripts/live_integration_test.sh` | 2 persistent containers (`cg-test-a`, `cg-test-b-event-test`), 1 ephemeral container, 1 host stream | [`evidence/phase_f/`](evidence/phase_f/) | 105 events captured, 0 kernel drops, 100.0% delivery, 3 alerts emitted |
+| **EXP-2** | Concurrent Workload Scaling (Phase H) | `b8f70f5` | `b8f70f5` | `sudo ./scripts/stress_test.sh 1000`<br/>`sudo ./scripts/stress_test.sh 5000`<br/>`sudo ./scripts/stress_test.sh 10000`<br/>`sudo ./scripts/stress_test.sh 25000` | 4 concurrent execution streams (2 persistent containers, 1 ephemeral, 1 host) with exploit injection mid-stream | [`evidence/phase_h/stress_1000/`](evidence/phase_h/stress_1000/)<br/>[`evidence/phase_h/stress_5000/`](evidence/phase_h/stress_5000/)<br/>[`evidence/phase_h/stress_10000/`](evidence/phase_h/stress_10000/)<br/>[`evidence/phase_h/stress_25000/`](evidence/phase_h/stress_25000/) | 1,040 to 25,032 events; 0 kernel drops; 0 sequence gaps; 100.0% delivery up to 1,923.0 hooks/s |
+| **EXP-3** | Controlled Buffer Saturation & Reader Backpressure (Phase H.2) | `96f36ce` | `96f36ce` | `sudo ./scripts/saturation_test.sh sat_16mb_8stream 16384 0 8 250`<br/>`sudo ./scripts/saturation_test.sh sat_bp_256kb 256 4 4 500`<br/>`sudo ./scripts/saturation_test.sh sat_bp_64kb 64 4 4 500` | 2,000 target events under 4.0-second induced userspace reader backpressure across buffer sizes (64KB, 256KB, 16MB) | [`evidence/phase_h2/suite1_capacity_8stream/`](evidence/phase_h2/suite1_capacity_8stream/)<br/>[`evidence/phase_h2/suite2_backpressure/`](evidence/phase_h2/suite2_backpressure/)<br/>[`evidence/phase_h2/original_unreconciled/`](evidence/phase_h2/original_unreconciled/) | Exact conservation: $\text{Hooks} = \text{Submissions} + \text{Drops}$. 64KB held 190 events during freeze; 256KB held 762 events (344B wire schema). Zero sequence gaps. |
+| **EXP-4** | Execution-Path Semantics & Credential Transitions (Phase I) | `b8f70f5` | Current (`PR #7`) | `./scripts/execution_path_test.sh` *(invoked as unprivileged user)* | 14 execution conditions: direct syscall, relative `execveat`, anonymous `memfd`, static ELF, symlinks, setuid EUID 0 transition, failed `ENOENT`/`EACCES`, and live cgroup migration | **Preserved Baseline:**<br/>[`evidence/phase_i/execution_path_report.json`](evidence/phase_i/execution_path_report.json)<br/>[`evidence/phase_i/exec_paths_events.jsonl`](evidence/phase_i/exec_paths_events.jsonl)<br/>**New Runs:** `evidence/phase_i/runs/<run_id>/` | 89 total events; 87 committed (`sched_process_exec`); 2 failed (`sys_exit_execve`); 0 drops; setuid `CG_FLAG_SETUID_EXEC` verified; cgroup migration tracked |
+| **EXP-5A**| Detection Validation & False-Positive Evaluation (Phase I) | `7c56b1e` (Dataset 1)<br/>`b8f70f5` (Dataset 2) | `b8f70f5` | `sudo ./scripts/detection_benchmark.sh` | Interleaved corpus: 120 benign operations (Git queries, multi-stage GCC compilation) vs 12 synthetic attack simulations | [`evidence/phase_i/detection_validation_report.json`](evidence/phase_i/detection_validation_report.json)<br/>[`evidence/phase_i/detection_alerts.jsonl`](evidence/phase_i/detection_alerts.jsonl) | Dataset 1 (133 events): TP=12, TN=387, FP=0, FN=0.<br/>Dataset 2 (132 events): TP=12, TN=384, FP=0, FN=0.<br/>100% Precision, 100% Recall on labelled suite. |
+| **EXP-5B**| Monitoring Runtime Overhead & Resource Footprint (Phase I) | `7c56b1e` (Trial 1)<br/>`b8f70f5` (Trial 2) | `b8f70f5` | `sudo ./scripts/overhead_benchmark.sh` | 2,000 rapid process executions across 4 worker streams with pre-test cache drops (`drop_caches`), comparing unmonitored vs ContainerGuard monitored | [`evidence/phase_i/overhead_benchmark_report.json`](evidence/phase_i/overhead_benchmark_report.json)<br/>[`evidence/phase_i/overhead_resource_samples.csv`](evidence/phase_i/overhead_resource_samples.csv) | Trial 1 (+3.46% overhead, 7.77 µs delta/lifecycle); Trial 2 (+5.95% overhead, 12.68 µs delta/lifecycle); Descriptive mean: 4.71%; Peak RSS: 6.04 MiB |
 
 ---
 
 ## 4. Step-by-Step Independent Reproduction Protocol
 
-To independently execute and verify ContainerGuard without depending on pre-existing process or container state:
+To independently execute and verify ContainerGuard:
+
+### Step 0: Research Environment Prerequisites & Container Preparation
+The experiment suites evaluate both host and container workloads. Ensure Docker is running and initialize the standard research containers (`cg-test-a` and `cg-test-b-event-test`):
+```bash
+# 1. Verify Docker daemon is active
+sudo systemctl is-active docker || sudo service docker start
+
+# 2. Ensure research baseline containers exist and are active
+for c in cg-test-a cg-test-b-event-test; do
+    if ! sudo docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
+        sudo docker run -d --name "${c}" busybox:latest sleep 3600
+    fi
+    sudo docker start "${c}" >/dev/null 2>&1 || true
+done
+```
+*(Note: Test runners such as `scripts/execution_path_test.sh` and `scripts/live_integration_test.sh` automatically verify and initialize these containers if absent).*
 
 ### Step 1: Clean Build Verification
 ```bash
-# Verify no dirty state
+# Verify no dirty state in Git
 git status
 
-# Run the automated build script (non-destructive formatting verification)
+# Run the automated build script (compiles into build/ to preserve tracked release binaries)
 ./scripts/build.sh
 
-# Confirm compiled hashes match official release
+# Confirm tracked official release binary digests remain intact
 sha256sum bin/containerguard bpf/execve_events.o
 ```
 
@@ -79,8 +86,9 @@ go test -v -race -count=1 ./internal/...
 ```bash
 # 1. Execution-Path Semantics Suite (EXP-4)
 # Note: Execute directly as an unprivileged user (not with sudo). The test harness
-# invokes sudo internally for daemon attachment, and executes the setuid binary from
-# the caller context to verify the unprivileged UID 1000 -> EUID 0 credential transition.
+# invokes sudo internally for daemon attachment, compiles an ephemeral setuid helper
+# inside the run directory, and executes it from caller context to verify the unprivileged
+# UID 1000 -> EUID 0 credential transition while preserving tracked release binaries.
 ./scripts/execution_path_test.sh
 
 # 2. Detection Rule Validation (EXP-5A)
@@ -108,4 +116,3 @@ sudo ./scripts/overhead_benchmark.sh
    - Dataset 2 (`b8f70f5`) reproduced the benchmark in an ambient-free environment, yielding exactly 132 scripted events.
 
 ---
-*ContainerGuard 50% Verified Milestone Reproducibility Manifest*

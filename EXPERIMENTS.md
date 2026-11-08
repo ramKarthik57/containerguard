@@ -119,7 +119,7 @@ flowchart LR
 - **Research Question:** Can ContainerGuard intercept non-standard execution pathways, detect boundary truncations, and distinguish attempted from committed executions?
 - **Test Matrix:** 14 distinct execution conditions evaluated in live Linux kernel.
 - **Execution Script:** `./scripts/execution_path_test.sh` *(invoked as unprivileged user; invokes `sudo` internally for daemon/cgroup operations to ensure genuine unprivileged setuid transition)*
-- **Report & Evidence:** [`docs/EXECUTION_PATH_COVERAGE.md`](docs/EXECUTION_PATH_COVERAGE.md), [`docs/evidence/phase_i/exec_paths_events.jsonl`](docs/evidence/phase_i/exec_paths_events.jsonl)
+- **Report & Evidence:** [`docs/EXECUTION_PATH_COVERAGE.md`](docs/EXECUTION_PATH_COVERAGE.md), [`docs/evidence/phase_i/exec_paths_events.jsonl`](docs/evidence/phase_i/exec_paths_events.jsonl) *(Preserved baseline archive; live reproduction runs output to isolated `docs/evidence/phase_i/runs/<run_id>/` directories)*
 
 #### Empirical Execution-Path Matrix:
 | Test ID | Execution Condition | Technique / Mechanism | Verified Kernel Behavior & Flag | Outcome |

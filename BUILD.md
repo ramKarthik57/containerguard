@@ -35,7 +35,10 @@ docker version
 
 ## 2. Compilation Instructions
 
-The build process is coordinated via [`scripts/build.sh`](scripts/build.sh), or can be executed as individual compilation steps.
+The build process is automated via [`scripts/build.sh`](scripts/build.sh), or can be executed as individual compilation steps.
+
+> [!NOTE]
+> Running `./scripts/build.sh` compiles by default into an isolated output directory (`build/bin/` and `build/bpf/`). It computes the resulting SHA-256 digests and checks them against official milestone hashes while preserving the tracked release binaries (`bin/containerguard`, `bpf/execve_events.o`) unmodified. Pass `--overwrite-release` to explicitly write to `bin/` and `bpf/`.
 
 ### Step 1: Compile eBPF Kernel Program
 The eBPF program is compiled into a CO-RE (Compile Once – Run Everywhere) ELF 64-bit object. It embeds BTF type information, enabling dynamic offset relocation against the running kernel:
@@ -135,12 +138,14 @@ The repository includes standalone automated benchmark and test runners used to 
 Builds test binaries and evaluates 14 execution pathways (shebang scripts, relative `execveat`, anonymous `memfd` via `AT_EMPTY_PATH`, symlinks, static binaries, setuid privilege escalation, and failed executions):
 ```bash
 # Execute directly as an unprivileged user (not with sudo). The script uses sudo
-# internally for daemon and cgroup operations, and invokes the setuid binary from
-# the caller context to test the genuine unprivileged UID 1000 -> EUID 0 transition.
+# internally for daemon and cgroup operations, and compiles an ephemeral setuid helper
+# inside the run directory to test the genuine unprivileged UID 1000 -> EUID 0 transition
+# without modifying the tracked release binary bin/cg_setuid_test.
 ./scripts/execution_path_test.sh
 ```
 *Report Output:* [`docs/EXECUTION_PATH_COVERAGE.md`](docs/EXECUTION_PATH_COVERAGE.md)  
-*Raw Evidence:* [`docs/evidence/phase_i/exec_paths_events.jsonl`](docs/evidence/phase_i/exec_paths_events.jsonl)
+*Preserved Baseline Evidence:* [`docs/evidence/phase_i/execution_path_report.json`](docs/evidence/phase_i/execution_path_report.json), [`docs/evidence/phase_i/exec_paths_events.jsonl`](docs/evidence/phase_i/exec_paths_events.jsonl) (frozen at milestone `b8f70f5`)  
+*Live Reproduction Runs:* Saved by default to timestamped subdirectories under `docs/evidence/phase_i/runs/<run_id>/`
 
 ### 2. Detection Validation & Confusion Matrix
 Executes 120 benign developer operations (GCC compilation, Git status queries, container diagnostics) and 12 synthetic attack simulations:
