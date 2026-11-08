@@ -52,3 +52,21 @@ Validate the resilience of ContainerGuard under telemetry pressure, lifecycle ra
 | **Ephemeral Container Attribution** | `UNRESOLVED` | Exited before inventory poll | Correct non-host state |
 | **Detection Alerts Fired** | 4 | 3 shells, 1 `/tmp` exec | 100% detection recall |
 | **Shutdown Termination Signal** | `SIGTERM` | Graceful flush | Clean exit, no hang |
+
+
+---
+
+### Trial Run: Thread-Group Leader & Dedicated Lifecycle Test (2026-11-08 04:22 UTC)
+
+| Test Metric | Empirical Count | Verified Ground Truth | Status |
+|---|---|---|---|
+| **Total Syscall Invocations** | 106 | 106 kernel hooks | Complete Match |
+| **Ring Buffer Reserve Drops** | 0 | 0 buffer exhaustion | Zero Loss |
+| **Ring Buffer Submissions** | 106 | 106 records submitted | 100% Submitted |
+| **Userspace Records Decoded** | 106 | 106 records decoded | 100% Recall |
+| **`cg-test-a` Attributed** | 6 | 6 events | 100% Attribution |
+| **`cg-test-b-event-test` Attributed** | 10 | 10 events | 100% Attribution |
+| **`cg-lifecycle` Dedicated Test** | 8 | 8 events across restart & rename | 100% Attribution |
+| **Deterministic Alerts Triggered** | 3 | 2 shell executions, 1 writable exec | 100% Detection Recall |
+| **Lineage Integrity** | Complete | Parent keys match leader start times | Verified |
+| **Daemon Teardown** | Clean | SIGTERM handled, reader unblocked | Verified |

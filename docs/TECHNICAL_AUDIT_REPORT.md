@@ -162,3 +162,53 @@ Processed Events                -               78                DRAINED
 - `CG-RULE-003` (Shell Spawned Inside Container): 3 alerts triggered on interactive `/bin/sh` executions.
 - `CG-RULE-002` (Execution From Writable Directory): 1 alert triggered on `/tmp/test_alert.sh`.
 - All alerts captured complete structured `ProcessKey` and `ParentKey` metadata.
+
+
+---
+
+## 6. Phase F Final Verification: Thread-Group Leader Identity & Dedicated Lifecycle Validation
+
+**Execution Date:** 2026-11-08 04:22 UTC  
+**Git Checkpoint:** `0edebfc`  
+**Execution Context:** Linux Kernel 6.18.33.1-microsoft-standard-WSL2  
+**Validation Artifacts:** `/tmp/containerguard_validation/{daemon.log, events.jsonl, alerts.jsonl}`
+
+### 1. Final Telemetry Integrity Report
+```json
+{
+  "timestamp": "2026-11-08T04:22:58.764659024Z",
+  "kernel_hook_invocations": 106,
+  "kernel_ringbuf_reserve_drops": 0,
+  "kernel_ringbuf_submitted": 106,
+  "kernel_cgroup_map_fails": 0,
+  "userspace_records_received": 106,
+  "userspace_records_decoded": 106,
+  "userspace_decode_failures": 0,
+  "attribution_pending": 84,
+  "attribution_resolved": 24,
+  "attribution_unresolved": 82,
+  "attribution_stale_mapping": 0,
+  "attribution_host_confirmed": 0,
+  "userspace_queue_overflows": 0,
+  "sequence_gaps_detected": 0,
+  "reordered_events": 0,
+  "events_processed": 106,
+  "processing_failures": 0,
+  "kernel_drop_rate_pct": 0,
+  "userspace_loss_count": 0
+}
+```
+
+### 2. Thread-Group Leader Start Time Verification
+- In all captured records, `"start_time_estimated": false` and `"parent_start_time_estimated": false`.
+- Kernel task inspection read `task->group_leader->start_time` and `real_parent->group_leader->start_time` with 100% success.
+- Parent-child lineage demonstrated exact linkage:
+  - Parent: `/bin/sh` (`TGID=18648`, `start_time_ns=13833931163320`)
+  - Child: `/tmp/test_alert.sh` (`TGID=18655`, `parent_key.tgid=18648`, `parent_key.start_time_ns=13833931163320`)
+
+### 3. Dedicated Lifecycle Isolation Results
+- Baseline containers `cg-test-a` (ID `52274ed23949`) and `cg-test-b-event-test` (ID `2b604b614c95`) remained running continuously without restarts or renames.
+- Dedicated container `cg-lifecycle-ephemeral` was spawned under cgroup `6320`.
+- Upon `docker restart`, systemd assigned new cgroup `6392`. Resolver updated mapping dynamically.
+- Upon `docker rename`, resolver updated name to `cg-lifecycle-renamed`. Subsequent events resolved under the new name.
+- Container was removed at end of test with zero orphaned artifacts.

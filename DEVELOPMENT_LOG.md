@@ -123,3 +123,35 @@
 - **Lifecycle & Shutdown:**
   - Handled SIGTERM cleanly (`kill -TERM 15242`).
   - Ring buffer reader closed asynchronously and printed final telemetry integrity accounting report.
+
+### Entry 005 - 2026-11-08: Phase F Empirical Validation with Thread-Group Leader & Safe Lifecycle Isolation
+- **Status:** Fully Validated and Verified.
+- **Git Commit:** `0edebfc`
+- **Audit Findings Implemented Prior to Run:**
+  1. *Thread-Group Leader Start Time Extraction:*
+     - BPF CO-RE extracts `task->group_leader->start_time` and `real_parent->group_leader->start_time`.
+     - Verified that worker subthreads calling `execve()` use the consistent process-level identity (`TGID` + group-leader `start_time`).
+     - Added fallback degradation flags (`CG_FLAG_START_TIME_ESTIMATED`) ensuring unreadable start times are transparently flagged rather than silently set to zero.
+  2. *Watermark Sliding Window Sequence Tracker:*
+     - Replaced premature gap counting with a pending-gap sliding watermark tracker.
+     - Verified via unit test `TestConcurrentSequenceStress` (2,000 events under randomized multi-core jitter) that transient out-of-order deliveries are reconciled without false loss alerts.
+  3. *Script Safety & Container Isolation:*
+     - Refactored `scripts/live_integration_test.sh` to preserve research containers `cg-test-a` and `cg-test-b-event-test` untouched.
+     - Lifecycle tests (start, restart, rename, destroy) were executed using dedicated container `cg-lifecycle-ephemeral` -> `cg-lifecycle-renamed`.
+- **Live Empirical Test Results:**
+  - Command: `sudo ./scripts/live_integration_test.sh` (PID `18025`).
+  - Total Decoded Events: 106.
+  - Kernel Hook Invocations: 106.
+  - Kernel Ring Buffer Submitted: 106.
+  - Kernel Ring Buffer Reserve Drops: 0.
+  - Kernel Cgroup Hash Map Failures: 0.
+  - Userspace Records Received & Decoded: 106 (100% recall).
+  - Sequence Gaps Detected: 0.
+  - Reordered Events: 0.
+  - Events Attributed to `cg-test-a`: 6 (`uname -a`, `ls -la /`, `date`, runc).
+  - Events Attributed to `cg-test-b-event-test`: 10 (`id`, `/bin/sh`, `/tmp/test_alert.sh`, runc).
+  - Events Attributed to `cg-lifecycle` test: 8 (tracked across initial spawn `6320`, restart `6392`, and rename to `cg-lifecycle-renamed`).
+  - Ephemeral Container Test (`docker run --rm busybox hostname`): Captured at seq 97, cgroup 6464, expired gracefully to `UNRESOLVED` with zero host false positives.
+  - Deterministic Alerts Triggered: 3 (2x `CG-RULE-003` Shell spawned, 1x `CG-RULE-002` Execution from writable `/tmp`).
+  - Lineage Reconstruction: Verified `parent_key` of `/tmp/test_alert.sh` (`TGID=18655`) directly linked to parent `/bin/sh` (`TGID=18648`) with matching start times.
+  - Graceful Shutdown: SIGTERM cleanly flushed sequence tracker and closed ring buffer reader.
