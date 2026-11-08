@@ -110,7 +110,7 @@ $$\text{Kernel Hook Invocations} = \text{Ring Buffer Submissions} + \text{Ring B
 | **Live Integration Test** | `sudo ./scripts/live_integration_test.sh` | **PASS** (105 events, 3 alerts, 0 drops) |
 | **Stress Benchmark** | `sudo ./scripts/stress_test.sh 1000` | **PASS** (1,025 events, 100% delivery) |
 | **Saturation & Loss Test** | `sudo ./scripts/saturation_test.sh sat_acceptance_check 256 4 4 250`| **PASS** (351 drops accounted, 100% delivery of submits) |
-| **Execution Path Suite** | `sudo ./scripts/execution_path_test.sh` | **PASS** (All 12 paths & setuid transition verified) |
+| **Execution Path Suite** | `./scripts/execution_path_test.sh` *(unprivileged)* | **PASS** (All 12 paths & setuid transition verified) |
 | **Detection Benchmark** | `sudo ./scripts/detection_benchmark.sh` | **PASS** (100% precision & recall, 0 false positives) |
 | **Overhead Benchmark** | `sudo ./scripts/overhead_benchmark.sh` | **PASS** (+5.95% overhead, 6.04 MiB RSS) |
 
