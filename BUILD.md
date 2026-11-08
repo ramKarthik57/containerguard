@@ -192,4 +192,12 @@ sudo ./scripts/saturation_test.sh sat_bp_64kb 64 4 4 500
 | `failed to find cgroup inode` | Cgroup v1 or non-unified mode | Ensure host is mounted with unified cgroup v2 (`mount -t cgroup2`). |
 
 ---
+
+## 7. Build Provenance & Module Specification
+
+- **Module Identity (`go.mod`):** The repository's Go module is declared as `module cg-smoke-test`. This identifier reflects the prototype origin of the initial codebase and is strictly preserved in the frozen 50% milestone to guarantee bit-for-bit checksum parity of compiled binary symbols (`bin/containerguard`) against the release checkpoint (`b8f70f5`).
+- **Continuous Integration Workflow Template:** A non-destructive CI configuration template is provided at [`.github/ci-workflow-template.yml`](.github/ci-workflow-template.yml), executing non-mutating `gofmt` verification, `go vet`, race-enabled unit testing, and relative link crawling.
+- **Experiment Provenance Manifest:** For end-to-end execution commands, parameters, environment metadata, and raw evidence links across all benchmark experiments, see the [Experiment Provenance Manifest](docs/EXPERIMENT_PROVENANCE_MANIFEST.md).
+
+---
 *ContainerGuard 50% Verified Milestone Build Manual*

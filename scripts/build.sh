@@ -8,9 +8,14 @@ echo "[1/3] Compiling eBPF kernel program (execve_events.c)..."
 mkdir -p bpf bin
 clang -g -O2 -target bpf -I/usr/include/x86_64-linux-gnu -c bpf/execve_events.c -o bpf/execve_events.o
 
-# 2. Format and verify Go source
+# 2. Verify Go formatting and static checks (non-destructive)
 echo "[2/3] Checking Go formatting and running go vet..."
-gofmt -w .
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then
+    echo "Error: The following Go source files require formatting (run 'gofmt -w <file>'):"
+    echo "$unformatted"
+    exit 1
+fi
 go vet ./...
 
 # 3. Build ContainerGuard daemon

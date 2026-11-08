@@ -232,7 +232,7 @@ sequenceDiagram
 
 ## 5. eBPF Kernel Telemetry Internals
 
-ContainerGuard's kernel engine ([`bpf/execve_events.c`](bpf/execve_events.c)) is compiled with Clang/LLVM using CO-RE (`#include "vmlinux.h"`). It uses BTF type relocations to ensure binary portability across kernel patch versions.
+ContainerGuard's kernel engine ([`bpf/execve_events.c`](bpf/execve_events.c)) is compiled with Clang/LLVM using BPF CO-RE (`#include "vmlinux.h"`). While BTF type relocations provide the technical mechanism for cross-kernel struct portability, empirical runtime verification is currently established strictly on the documented Linux 6.18.33.1 WSL2 kernel environment.
 
 ### 5.1 Enriched 360-Byte Binary Event Layout
 The kernel telemetry event structure is 64-bit aligned, defining a 360-byte binary payload transferred to user space. On the wire within the eBPF ring buffer, each event occupies exactly 368 bytes, comprising the 360-byte struct payload plus the mandatory 8-byte eBPF ring buffer record header (`struct bpf_ringbuf_hdr`):
@@ -662,8 +662,10 @@ containerguard/
 │   ├── DETECTION_VALIDATION.md      # Detection evaluation & confusion matrix
 │   ├── OVERHEAD_EVALUATION.md       # Overhead benchmark report across revisions
 │   ├── GITHUB_PUBLICATION_REPORT.md # Initial GitHub publication record
+│   ├── EXPERIMENT_PROVENANCE_MANIFEST.md # Reproducibility manifest & parameter matrix
 │   └── evidence/                    # Raw telemetry streams & JSONL data logs
 └── .github/                         # GitHub repository configuration
+    ├── ci-workflow-template.yml     # Standalone CI workflow template (Go vet & race test)
     ├── PULL_REQUEST_TEMPLATE.md     # Standardized pull request template
     └── ISSUE_TEMPLATE/              # Bug, documentation & research templates
 ```
@@ -699,8 +701,9 @@ To maintain scientific integrity, the following limitations are explicitly noted
 
 ## 18. Reproducibility & Evidence Index
 
-All empirical findings are accompanied by raw, unedited evidence artifacts:
+All empirical findings are accompanied by raw, unedited evidence artifacts and an end-to-end execution manifest:
 
+- **[Experiment Provenance Manifest](docs/EXPERIMENT_PROVENANCE_MANIFEST.md):** Complete parameter, environment, binary digest, and execution command mapping.
 - **Phase F Baseline Integration:** [`docs/evidence/phase_f/`](docs/evidence/phase_f/)
 - **Phase H Stress Tiers (1k, 5k, 10k, 25k):** [`docs/evidence/phase_h/`](docs/evidence/phase_h/)
 - **Phase H.2 Saturation & Backpressure:** [`docs/evidence/phase_h2/`](docs/evidence/phase_h2/)
