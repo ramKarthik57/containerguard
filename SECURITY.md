@@ -13,18 +13,20 @@ ContainerGuard is a research engineering project currently maintained at the **5
 
 ## Reporting a Vulnerability
 
-The ContainerGuard project takes security vulnerabilities seriously.
+The ContainerGuard project takes security vulnerabilities and kernel safety seriously.
 
 If you identify a security defect, kernel panic vulnerability, permission escalation flaw, or telemetry bypass vulnerability:
 
-1. **Do not create a public GitHub issue.**
-2. Report the vulnerability privately:
-   - **GitHub Private Vulnerability Advisory (Primary Channel):** Navigate to the **Security** tab $\to$ **Advisories** $\to$ **Report a vulnerability** under `ramKarthik57/containerguard`. This provides an encrypted, authenticated, and access-controlled disclosure workflow directly with repository maintainers.
-   - **Confidential Maintainer Contact (Fallback):** If GitHub Private Vulnerability Reporting is unavailable, coordinate confidential disclosure directly with the repository owner via GitHub profile [ramKarthik57](https://github.com/ramKarthik57) to establish an encrypted exchange channel prior to transmitting technical vulnerability details. Do not submit sensitive vulnerability payloads to public issues, discussions, or unverified noreply commit aliases.
-3. Provide:
-   - Detailed description of the vulnerability and attack vector.
-   - Host environment details (kernel version, cgroup mode, Docker version).
-   - Minimal reproduction script or proof of concept.
-   - Proposed remediation, if known.
+1. **Do not create a public GitHub issue or public discussion.**
+2. **Confidential Reporting Channels:**
+   - **Monitored Security Intake Mailbox:** Submit technical vulnerability reports directly to the maintainer security contact at **`ramkarthik57@gmail.com`** (please include `[ContainerGuard Security Advisory]` in the subject line).
+   - **Encrypted Coordination:** For sensitive vulnerability reports, proof-of-concept exploits, or potential kernel-safety defects, coordinate confidential PGP encrypted communication with the repository maintainer via GitHub profile [ramKarthik57](https://github.com/ramKarthik57) before transmitting raw exploit materials.
+   - **Repository Visibility Context:** This repository is currently hosted as a private research project. If and when the repository visibility is transitioned to public, GitHub Private Vulnerability Reporting (`Security` $\to$ `Advisories` $\to$ `Report a vulnerability`) will be configured and enabled as an integrated disclosure mechanism.
 
-We will acknowledge receipt of the report, assess the technical impact, and prepare a coordinated fix.
+3. **Required Information in Disclosures:**
+   - Detailed description of the vulnerability and attack vector.
+   - Host environment details (Linux kernel version, cgroup mode, Docker runtime version).
+   - Minimal reproduction script or proof of concept.
+   - Proposed remediation or mitigation, if known.
+
+We will acknowledge receipt within 48 hours, evaluate the technical impact against the 50% milestone architecture, and coordinate coordinated disclosure.
