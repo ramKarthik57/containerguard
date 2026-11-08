@@ -1,0 +1,20 @@
+# Binaries & Build Outputs (do NOT ignore bin/containerguard or bpf/execve_events.o which are tracked release assets)
+*.tmp
+*.log
+*.out
+
+# Go test binaries
+*.test
+*.prof
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local scratch and environment files
+.env
+.env.*

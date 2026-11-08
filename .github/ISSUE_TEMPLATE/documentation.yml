@@ -1,0 +1,20 @@
+name: Documentation Clarification
+description: Report a documentation error, broken link, or architectural ambiguity.
+title: "[DOCS]: "
+labels: ["documentation"]
+body:
+  - type: input
+    id: document
+    attributes:
+      label: Affected Document
+      description: File path or section name.
+      placeholder: "e.g. ARCHITECTURE.md, README.md, docs/STRESS_TEST_RESULTS.md"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Suggested Improvement or Correction
+      description: Describe what needs clarification or correction.
+    validations:
+      required: true
