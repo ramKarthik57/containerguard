@@ -118,10 +118,19 @@ func (ab *AttributionBuffer) bufferPending(event *telemetry.SecurityEvent) {
 	}
 
 	event.State = telemetry.AttributionPending
-	ab.accounting.AttributionPending.Add(1)
+	ab.accounting.AttributionPendingTransitions.Add(1)
 
 	elem := ab.pendingList.PushBack(event)
 	ab.byCgroup[event.CgroupID] = append(ab.byCgroup[event.CgroupID], elem)
+
+	currLen := uint64(ab.pendingList.Len())
+	ab.accounting.CurrentPendingQueueDepth.Store(currLen)
+	for {
+		peak := ab.accounting.PeakPendingQueueDepth.Load()
+		if currLen <= peak || ab.accounting.PeakPendingQueueDepth.CompareAndSwap(peak, currLen) {
+			break
+		}
+	}
 }
 
 func (ab *AttributionBuffer) cleanupCgroupIndex(cgroupID uint64, targetElem *list.Element) {
@@ -159,6 +168,7 @@ func (ab *AttributionBuffer) ResolveForCgroup(cgroupID uint64, info container.Co
 	}
 
 	delete(ab.byCgroup, cgroupID)
+	ab.accounting.CurrentPendingQueueDepth.Store(uint64(ab.pendingList.Len()))
 }
 
 // ExpireStale sweeps the pending queue and expires events older than PendingTTL.
@@ -196,6 +206,7 @@ func (ab *AttributionBuffer) ExpireStale(now time.Time) {
 
 		elem = next
 	}
+	ab.accounting.CurrentPendingQueueDepth.Store(uint64(ab.pendingList.Len()))
 }
 
 func (ab *AttributionBuffer) emit(event *telemetry.SecurityEvent) {

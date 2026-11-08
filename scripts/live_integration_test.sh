@@ -138,7 +138,7 @@ wait "$CG_PID" 2>/dev/null || true
 trap - EXIT INT TERM
 
 # Step 9: Analyze and verify captured telemetry
-echo "[9/10] Validating collected telemetry and attribution integrity..."
+echo "[9/10] Draining telemetry and analyzing log streams..."
 
 echo "--- Recent Telemetry Logs ---"
 tail -n 25 "$DAEMON_LOG"
@@ -149,6 +149,7 @@ RESOLVED_B=$(grep -c "cg-test-b-event-test" "$EVENTS_LOG" 2>/dev/null || echo 0)
 RESOLVED_LIFECYCLE=$(grep -c "cg-lifecycle" "$EVENTS_LOG" 2>/dev/null || echo 0)
 ALERTS_COUNT=$(wc -l < "$ALERTS_LOG" 2>/dev/null || echo 0)
 
+echo "[10/10] Final verification and telemetry integrity accounting evaluation..."
 echo "================================================================="
 echo " VALIDATION RESULTS"
 echo "================================================================="

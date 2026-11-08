@@ -295,19 +295,21 @@ func (st *SequenceTracker) Stats() (reordered, confirmedLoss, pendingCount uint6
 // TelemetryAccounting tracks fine-grained kernel and userspace pipeline metrics.
 type TelemetryAccounting struct {
 	// Userspace metrics
-	RecordsReceived       atomic.Uint64
-	RecordsDecoded        atomic.Uint64
-	DecodeFailures        atomic.Uint64
-	AttributionPending    atomic.Uint64
-	AttributionResolved   atomic.Uint64
-	AttributionUnresolved atomic.Uint64
-	AttributionStale      atomic.Uint64
-	AttributionHost       atomic.Uint64
-	QueueOverflows        atomic.Uint64
-	SequenceGapsDetected  atomic.Uint64
-	ReorderedEvents       atomic.Uint64
-	EventsProcessed       atomic.Uint64
-	ProcessingFailures    atomic.Uint64
+	RecordsReceived               atomic.Uint64
+	RecordsDecoded                atomic.Uint64
+	DecodeFailures                atomic.Uint64
+	AttributionPendingTransitions atomic.Uint64 // Cumulative transitions into PENDING
+	CurrentPendingQueueDepth      atomic.Uint64 // Live gauge: current buffered events
+	PeakPendingQueueDepth         atomic.Uint64 // Gauge: maximum observed pending queue size
+	AttributionResolved           atomic.Uint64 // Cumulative events resolved to container
+	AttributionUnresolved         atomic.Uint64 // Cumulative events remaining unmapped/expired
+	AttributionStale              atomic.Uint64 // Cumulative events resolved via tombstone
+	AttributionHost               atomic.Uint64 // Cumulative host-confirmed events
+	QueueOverflows                atomic.Uint64
+	SequenceGapsDetected          atomic.Uint64
+	ReorderedEvents               atomic.Uint64
+	EventsProcessed               atomic.Uint64
+	ProcessingFailures            atomic.Uint64
 
 	// Kernel-side metrics read from BPF maps
 	KernelHookInvocations  atomic.Uint64
@@ -318,26 +320,28 @@ type TelemetryAccounting struct {
 
 // MetricsSnapshot represents an immutable point-in-time metrics report.
 type MetricsSnapshot struct {
-	Timestamp              time.Time `json:"timestamp"`
-	KernelHookInvocations  uint64    `json:"kernel_hook_invocations"`
-	KernelRingBufferDrops  uint64    `json:"kernel_ringbuf_reserve_drops"`
-	KernelRingBufferSubmit uint64    `json:"kernel_ringbuf_submitted"`
-	KernelCgroupMapFails   uint64    `json:"kernel_cgroup_map_fails"`
-	RecordsReceived        uint64    `json:"userspace_records_received"`
-	RecordsDecoded         uint64    `json:"userspace_records_decoded"`
-	DecodeFailures         uint64    `json:"userspace_decode_failures"`
-	AttributionPending     uint64    `json:"attribution_pending"`
-	AttributionResolved    uint64    `json:"attribution_resolved"`
-	AttributionUnresolved  uint64    `json:"attribution_unresolved"`
-	AttributionStale       uint64    `json:"attribution_stale_mapping"`
-	AttributionHost        uint64    `json:"attribution_host_confirmed"`
-	QueueOverflows         uint64    `json:"userspace_queue_overflows"`
-	SequenceGapsDetected   uint64    `json:"sequence_gaps_detected"`
-	ReorderedEvents        uint64    `json:"reordered_events"`
-	EventsProcessed        uint64    `json:"events_processed"`
-	ProcessingFailures     uint64    `json:"processing_failures"`
-	KernelDropRatePercent  float64   `json:"kernel_drop_rate_pct"`
-	UserspaceLossCount     uint64    `json:"userspace_loss_count"`
+	Timestamp                     time.Time `json:"timestamp"`
+	KernelHookInvocations         uint64    `json:"kernel_hook_invocations"`
+	KernelRingBufferDrops         uint64    `json:"kernel_ringbuf_reserve_drops"`
+	KernelRingBufferSubmit        uint64    `json:"kernel_ringbuf_submitted"`
+	KernelCgroupMapFails          uint64    `json:"kernel_cgroup_map_fails"`
+	RecordsReceived               uint64    `json:"userspace_records_received"`
+	RecordsDecoded                uint64    `json:"userspace_records_decoded"`
+	DecodeFailures                uint64    `json:"userspace_decode_failures"`
+	AttributionPendingTransitions uint64    `json:"attribution_pending_transitions"`
+	CurrentPendingQueueDepth      uint64    `json:"current_pending_queue_depth"`
+	PeakPendingQueueDepth         uint64    `json:"peak_pending_queue_depth"`
+	AttributionResolved           uint64    `json:"attribution_resolved"`
+	AttributionUnresolved         uint64    `json:"attribution_unresolved"`
+	AttributionStale              uint64    `json:"attribution_stale_mapping"`
+	AttributionHost               uint64    `json:"attribution_host_confirmed"`
+	QueueOverflows                uint64    `json:"userspace_queue_overflows"`
+	SequenceGapsDetected          uint64    `json:"sequence_gaps_detected"`
+	ReorderedEvents               uint64    `json:"reordered_events"`
+	EventsProcessed               uint64    `json:"events_processed"`
+	ProcessingFailures            uint64    `json:"processing_failures"`
+	KernelDropRatePercent         float64   `json:"kernel_drop_rate_pct"`
+	UserspaceLossCount            uint64    `json:"userspace_loss_count"`
 }
 
 // Snapshot captures the current atomic values.
@@ -358,25 +362,27 @@ func (t *TelemetryAccounting) Snapshot() MetricsSnapshot {
 	}
 
 	return MetricsSnapshot{
-		Timestamp:              time.Now().UTC(),
-		KernelHookInvocations:  hookCalls,
-		KernelRingBufferDrops:  rbDrops,
-		KernelRingBufferSubmit: rbSubmit,
-		KernelCgroupMapFails:   t.KernelCgroupMapFails.Load(),
-		RecordsReceived:        received,
-		RecordsDecoded:         t.RecordsDecoded.Load(),
-		DecodeFailures:         t.DecodeFailures.Load(),
-		AttributionPending:     t.AttributionPending.Load(),
-		AttributionResolved:    t.AttributionResolved.Load(),
-		AttributionUnresolved:  t.AttributionUnresolved.Load(),
-		AttributionStale:       t.AttributionStale.Load(),
-		AttributionHost:        t.AttributionHost.Load(),
-		QueueOverflows:         t.QueueOverflows.Load(),
-		SequenceGapsDetected:   t.SequenceGapsDetected.Load(),
-		ReorderedEvents:        t.ReorderedEvents.Load(),
-		EventsProcessed:        t.EventsProcessed.Load(),
-		ProcessingFailures:     t.ProcessingFailures.Load(),
-		KernelDropRatePercent:  dropRate,
-		UserspaceLossCount:     lossCount,
+		Timestamp:                     time.Now().UTC(),
+		KernelHookInvocations:         hookCalls,
+		KernelRingBufferDrops:         rbDrops,
+		KernelRingBufferSubmit:        rbSubmit,
+		KernelCgroupMapFails:          t.KernelCgroupMapFails.Load(),
+		RecordsReceived:               received,
+		RecordsDecoded:                t.RecordsDecoded.Load(),
+		DecodeFailures:                t.DecodeFailures.Load(),
+		AttributionPendingTransitions: t.AttributionPendingTransitions.Load(),
+		CurrentPendingQueueDepth:      t.CurrentPendingQueueDepth.Load(),
+		PeakPendingQueueDepth:         t.PeakPendingQueueDepth.Load(),
+		AttributionResolved:           t.AttributionResolved.Load(),
+		AttributionUnresolved:         t.AttributionUnresolved.Load(),
+		AttributionStale:              t.AttributionStale.Load(),
+		AttributionHost:               t.AttributionHost.Load(),
+		QueueOverflows:                t.QueueOverflows.Load(),
+		SequenceGapsDetected:          t.SequenceGapsDetected.Load(),
+		ReorderedEvents:               t.ReorderedEvents.Load(),
+		EventsProcessed:               t.EventsProcessed.Load(),
+		ProcessingFailures:            t.ProcessingFailures.Load(),
+		KernelDropRatePercent:         dropRate,
+		UserspaceLossCount:            lossCount,
 	}
 }
