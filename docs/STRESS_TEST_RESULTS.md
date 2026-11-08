@@ -179,5 +179,5 @@ To resolve the saturation question, Phase H.2 executed two controlled benchmark 
    - **Conservation:** In all cases, $\text{Hooks} = \text{Submissions} + \text{Drops}$ with 100% mathematical precision.
    - **Recovery:** Upon backpressure release, the reader resumed consumption, drained buffered records, and terminated cleanly with 0 queue backlog.
 
-Full methodology, capacity tables, and empirical matrices are published in [docs/SATURATION_EVALUATION.md](file:///home/ram/ebpf-smoke-test/docs/SATURATION_EVALUATION.md).
+Full methodology, capacity tables, and empirical matrices are published in [docs/SATURATION_EVALUATION.md](SATURATION_EVALUATION.md).
 

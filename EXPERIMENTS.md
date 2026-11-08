@@ -85,10 +85,15 @@ flowchart LR
 ### Experiment 3: Controlled Saturation & Reader Backpressure Evaluation (Phase H.2)
 
 - **Research Question:** When memory constraints prevent complete event buffering, does the eBPF kernel counter account for every dropped event, and does userspace recover gracefully without sequence corruption?
-- **Theoretical Capacity Limits (344 Bytes / Event on Wire):**
-  - **64 KiB Buffer:** Capacity $= \lfloor 65,536 / 344 \rfloor \approx 190$ unconsumed events.
-  - **256 KiB Buffer:** Capacity $= \lfloor 262,144 / 344 \rfloor \approx 762$ unconsumed events.
-  - **16 MiB Buffer:** Capacity $= \lfloor 16,777,216 / 344 \rfloor \approx 48,770$ unconsumed events.
+- **Ring Buffer Capacity Modeling Across Event Schemas:**
+  - **Phase H.2 Evaluation Schema (336-byte `struct exec_event` + 8-byte ring buffer header = 344 bytes on wire):**
+    - **64 KiB Buffer:** Empirical capacity limit $= \lfloor 65,536 / 344 \rfloor = 190$ unconsumed events.
+    - **256 KiB Buffer:** Empirical capacity limit $= \lfloor 262,144 / 344 \rfloor = 762$ unconsumed events.
+    - **16 MiB Buffer:** Empirical capacity limit $= \lfloor 16,777,216 / 344 \rfloor = 48,770$ unconsumed events.
+  - **Frozen 50% Release Schema (360-byte `struct exec_event` + 8-byte ring buffer header = 368 bytes on wire):**
+    - **64 KiB Buffer:** Theoretical capacity limit $= \lfloor 65,536 / 368 \rfloor = 178$ unconsumed events.
+    - **256 KiB Buffer:** Theoretical capacity limit $= \lfloor 262,144 / 368 \rfloor = 712$ unconsumed events.
+    - **16 MiB Buffer:** Theoretical capacity limit $= \lfloor 16,777,216 / 368 \rfloor = 45,590$ unconsumed events.
 - **Execution Script:** `sudo ./scripts/saturation_test.sh <label> <size_kb> <pause_sec> <streams> <per_stream>`
 - **Raw Evidence Archive:** [`docs/evidence/phase_h2/`](docs/evidence/phase_h2/) (`suite1_capacity_8stream/`, `suite2_backpressure/`, and `original_unreconciled/`)
 

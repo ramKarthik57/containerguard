@@ -41,7 +41,7 @@
 
 ## 3. Published Assets & Cryptographic Verification
 
-The published release binaries were verified against the recorded SHA-256 digests in [`docs/MILESTONE_50_PERCENT_ACCEPTANCE_REPORT.md`](file:///home/ram/ebpf-smoke-test/docs/MILESTONE_50_PERCENT_ACCEPTANCE_REPORT.md):
+The published release binaries were verified against the recorded SHA-256 digests in [`docs/MILESTONE_50_PERCENT_ACCEPTANCE_REPORT.md`](MILESTONE_50_PERCENT_ACCEPTANCE_REPORT.md):
 
 | Release Asset | Size | Expected SHA-256 Digest | GitHub Release Asset Digest | Verification Status |
 | :--- | :---: | :--- | :--- | :---: |
