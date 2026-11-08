@@ -154,13 +154,13 @@ flowchart LR
 | **`CG-RULE-003`** | Container Shell Binary (`/bin/sh`, `/bin/bash` in container) | 5 | 0 | 127 | 0 | 100.00% | 100.00% | 0.00% |
 | **Macro Average** | **Across All 3 Deterministic Detection Rules** | **12** | **0** | **384** | **0** | **100.00%**| **100.00%**| **0.00%** |
 
-> **Corpus Reconciliation Note:** In the initial evaluation (Commit `7c56b1e`), 133 unique events were captured due to a single ambient host background IDE invocation (`/usr/bin/git`, `ParentTGID: 1016`, comm `language_server`) during daemon shutdown drain. In the 50% milestone rerun (Commit `b8f70f5`), exactly 132 scripted events were captured. Both evaluations exhibited 0 false positives and 100% precision/recall on the benchmark suite.
+> **Corpus Reconciliation Note:** In Dataset 1 (Commit `7c56b1e`), 133 unique events were captured due to a single ambient host background IDE invocation (`/usr/bin/git`, `TGID: 16615`, `ParentTGID: 1016`, comm `language_server`, cgroup `22`) during daemon shutdown drain. In Dataset 2 (Commit `b8f70f5`), exactly 132 scripted events were captured in a clean environment. Forensically, benchmark ground truth identifies this as benign background IDE activity, while ContainerGuard attribution left it strictly as `UNRESOLVED` (cgroup 22 unmapped). Because it matched no container attack criteria, zero false positives were emitted, contributing +1 True Negative per rule (+3 TN total across 399 decisions). Both evaluations exhibited 100% precision and recall on the benchmark suite.
 
 #### B. Monitoring Overhead Benchmarking Across Software Revisions
 Two benchmark trials of 2,000 process executions across 4 worker streams were evaluated:
 - **Trial 1 (Commit `7c56b1e`):** Baseline duration $0.4492\text{ s}$, Monitored duration $0.4648\text{ s}$ $\to$ **+3.46% overhead** ($7.77\ \mu\text{s}$ wall-clock delta per process lifecycle). Daemon RSS: 6.02 MiB.
-- **Trial 2 (Commit `b8f70f5`):** Baseline duration $0.4267\text{ s}$, Monitored duration $0.4520\text{ s}$ $\to$ **+5.95% overhead** ($12.68\ \mu\text{s}$ wall-clock delta per process lifecycle). Daemon RSS: 6.04 MiB.
-- **Descriptive Statistics across Revisions ($N = 2$):** Descriptive mean overhead: **4.71%** (Sample standard deviation $s \approx 1.76\%$, Standard error $SEM \approx 1.25\%$).
+- **Trial 2 (Commit `b8f70f5`):** Baseline duration $0.4267\text{ s}$, Monitored duration $0.4520\text{ s}$ $\to$ **+5.95% overhead** ($12.68\ \mu\text{s}$ from raw timer timestamps, or $12.65\ \mu\text{s}$ from 4-decimal rounded values, per process lifecycle). Daemon RSS: 6.04 MiB.
+- **Descriptive Statistics across Revisions ($N = 2$):** Descriptive mean overhead: **4.71%** (Sample standard deviation $s \approx 1.76\%$, Standard error $SEM \approx 1.25\%$). Baseline half-range: $\pm 0.0113\text{ s}$ (range 0.0225 s); Monitored half-range: $\pm 0.0064\text{ s}$ (range 0.0128 s).
 
 > **Methodological Limitation Notice:** Because Trial 1 and Trial 2 were conducted across separate software commits, the 4.71% figure represents a descriptive average across revisions, not a repeated measurement of one identical frozen release binary. Future production characterization requires repeated multi-trial benchmarks under dedicated hardware isolation.
 

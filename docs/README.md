@@ -51,7 +51,7 @@ Raw telemetry streams, JSONL alert logs, and benchmark profiling outputs are pre
 
 ## 4. Glossary of Core Concepts
 
-- **BPF Ring Buffer (`events`):** High-throughput, multi-producer, single-consumer memory-mapped ring buffer used to transfer 360-byte binary telemetry records from kernel space to user space.
+- **BPF Ring Buffer (`events`):** High-throughput, multi-producer, single-consumer memory-mapped ring buffer used to transfer 360-byte binary telemetry records from kernel space to user space (occupying 368 bytes on the wire including the 8-byte kernel record header).
 - **ProcessInstanceKey (`{TGID, StartTimeNS}`):** Immutable process identity construct that uniquely identifies a process lifecycle across PID recycling, cgroup migrations, and container boundaries.
 - **Cgroup Inode:** 64-bit filesystem inode of a cgroup v2 directory (retrieved via `BPF_CORE_READ(task, cgroups, dfl_cgrp, kn, id)`), serving as the immutable kernel handle for container attribution.
 - **Committed Execution:** A successful execution finalized at the `sched_process_exec` tracepoint after kernel binary loaders have succeeded, flagged with `CG_FLAG_COMMITTED_EXEC`.

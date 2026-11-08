@@ -87,9 +87,18 @@ An audit of the initial Phase H.2 runs identified four accounting anomalies, all
 * **Root Cause:** Asynchronous shutdown race condition. The collector goroutine closed map file descriptors before the final metrics query completed, leaving submitted counters frozen while the reader drained the remaining 7 records.
 * **Correction Applied:** Refactored collector shutdown so `StopReader()` unblocks the drain loop while keeping BPF maps open until `PollKernelMetrics()` executes synchronously after all events have drained.
 
-### 3.2 Audit Item 2: Final Accepted Counts (229 and 805 vs 190 and 762)
-* **Investigation:** Inspection of periodic snapshots during the 4-second pause confirmed that at $t = 5\text{s}$ (during the freeze), the 64 KiB buffer held **exactly 190 events**, and the 256 KiB buffer held **exactly 762 events**, matching theoretical limits.
-* **Finding:** Additional accepted records (39 in 64 KiB, 43 in 256 KiB) arrived *after* the 4-second pause released, when the reader resumed draining and accepted trailing container teardown commands into the now-empty ring buffer.
+### 3.2 Audit Item 2: Distinguishing Experimental Runs and Final Accepted Counts
+
+To avoid ambiguity across experimental iterations, two distinct backpressure runs are preserved in the evidence archive:
+
+1. **Pre-Reconciliation Audit Run (`evidence/phase_h2/original_unreconciled/`):**
+   - Conducted during initial Phase H.2 root-cause investigation.
+   - Periodic snapshots confirmed that during the 4.0-second pause (at $t = 5\text{s}$), the 64 KiB buffer held **exactly 190 events** and the 256 KiB buffer held **exactly 762 events**, matching theoretical limits.
+   - When the reader resumed, trailing container teardown commands were accepted post-pause (39 in 64 KiB, 43 in 256 KiB), resulting in final accepted totals of **229 events** ($190 + 39$) and **805 events** ($762 + 43$).
+2. **Final Audited Verification Suite (`evidence/phase_h2/suite2_backpressure/`):**
+   - Conducted as the official audited benchmark rerun after accounting corrections were committed (`96f36ce`).
+   - Again confirmed that during the 4.0-second pause window, the buffer accepted **exactly 190 events** (64 KiB) and **762 events** (256 KiB) before drops occurred.
+   - Post-pause trailing execution activity accepted 41 events (64 KiB) and 39 events (256 KiB), resulting in the final submission counts reported in the Test Suite 2 table below: **231 events** ($190 + 41$) and **801 events** ($762 + 39$).
 
 ### 3.3 Audit Item 3: Residual Pending Queue Depth at Exit
 * **Investigation:** Background test harness processes (`ps`, `sleep`) executed immediately prior to SIGTERM were held in the pending attribution buffer.
