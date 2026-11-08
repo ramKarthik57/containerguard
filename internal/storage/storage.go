@@ -23,14 +23,14 @@ func NewStorage(eventLogPath, alertLogPath string) (*Storage, error) {
 	var err error
 
 	if eventLogPath != "" {
-		ef, err = os.OpenFile(eventLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
+		ef, err = os.OpenFile(eventLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return nil, fmt.Errorf("opening event log file %s: %w", eventLogPath, err)
 		}
 	}
 
 	if alertLogPath != "" {
-		af, err = os.OpenFile(alertLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
+		af, err = os.OpenFile(alertLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			if ef != nil {
 				ef.Close()

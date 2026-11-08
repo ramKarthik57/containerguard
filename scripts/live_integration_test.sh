@@ -38,12 +38,12 @@ docker ps -a --filter "name=cg-test" --format "table {{.ID}}\t{{.Names}}\t{{.Sta
 # Ensure cg-test-a and cg-test-b-event-test exist; if not, create them without destroying any others
 if ! docker ps -a --format '{{.Names}}' | grep -q "^cg-test-a$"; then
     echo "[+] Initializing research container cg-test-a..."
-    docker run -d --name cg-test-a alpine:latest sleep 3600
+    docker run -d --name cg-test-a busybox:latest sleep 3600
 fi
 
 if ! docker ps -a --format '{{.Names}}' | grep -q "^cg-test-b-event-test$"; then
     echo "[+] Initializing research container cg-test-b-event-test..."
-    docker run -d --name cg-test-b-event-test alpine:latest sleep 3600
+    docker run -d --name cg-test-b-event-test busybox:latest sleep 3600
 fi
 
 # Ensure both are running
@@ -94,7 +94,7 @@ echo "[5/10] Executing workload and detection trigger in cg-test-b-event-test...
 docker exec cg-test-b-event-test id
 docker exec cg-test-b-event-test /bin/sh -c "echo 'trigger test' > /dev/null"
 # Trigger Rule CG-RULE-002: Writable directory execution
-docker exec cg-test-b-event-test /bin/sh -c "cp /bin/echo /tmp/echo_test && /tmp/echo_test 'security alert check' && rm -f /tmp/echo_test"
+docker exec cg-test-b-event-test /bin/sh -c "echo '#!/bin/sh' > /tmp/test_alert.sh && echo 'echo alert' >> /tmp/test_alert.sh && chmod +x /tmp/test_alert.sh && /tmp/test_alert.sh && rm -f /tmp/test_alert.sh"
 
 # Step 6: Test Lifecycle operations (restart, rename)
 echo "[6/10] Testing container lifecycle reconciliation (restart & rename)..."
@@ -104,7 +104,7 @@ docker exec cg-test-b-event-test uptime
 
 # Step 7: Test short-lived container (Attribution Race Condition test)
 echo "[7/10] Testing ephemeral container attribution race..."
-docker run --rm alpine:latest /bin/sh -c "echo 'ephemeral race check'; hostname"
+docker run --rm busybox:latest /bin/sh -c "echo 'ephemeral race check'; hostname"
 
 # Allow pipeline to settle and drain pending queue
 sleep 4
