@@ -19,7 +19,7 @@ ContainerGuard is an eBPF-based runtime security and container telemetry archite
 The project investigates fundamental systems security challenges in container observability:
 - **Telemetry Integrity Under Saturation:** Accounting for kernel-side buffer drops and maintaining exact mathematical conservation:
   $$\text{Kernel Hook Invocations} = \text{Ring Buffer Submissions} + \text{Kernel Reservation Drops}$$
-- **Decoupled Process Instance Identity:** Mitigating PID recycling collisions and tracking cgroup reassignments across container lifecycles via immutable `ProcessInstanceKey{TGID, StartTimeNS}` tracking.
+- **Decoupled Process Instance Identity:** Separating immutable process instance identity (`ProcessInstanceKey{TGID, StartTimeNS}`) from mutable execution context (`CgroupID`), mitigating PID recycling collisions and enabling the lineage tracker to record cgroup migrations (`CgroupHistory`) without breaking process trees.
 - **Execution-Path Semantics:** Correlating 5 coordinated kernel tracepoints to differentiate execution attempts, committed binary activations, and kernel-side execution failures across standard `execve`, relative `execveat`, and anonymous `memfd` invocations.
 - **Deterministic Attribution:** Mapping cgroup v2 filesystem inodes directly to container runtime lifecycle metadata with tombstone caching, avoiding the race conditions of asynchronous container destruction.
 

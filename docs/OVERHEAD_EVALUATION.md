@@ -48,12 +48,12 @@ $$\text{Amortized Wall-Clock Delta per Lifecycle} = \frac{T_{\text{monitored}} -
 - **Trial 1 (Commit `7c56b1e`):**
   $$\frac{0.46478\text{ s} - 0.44925\text{ s}}{2000} \approx 7.77 \times 10^{-6}\text{ seconds} = \mathbf{7.77\ \mu\text{s}}$$
 - **Trial 2 (Commit `b8f70f5`):**
-  - **From raw timer timestamps:**
+  - **From in-memory raw timer timestamps:**
     $$\frac{T_{\text{monitored}} - T_{\text{baseline}}}{N_{\text{events}}} = \frac{0.45204\text{ s} - 0.42668\text{ s}}{2000} = \frac{0.02536\text{ s}}{2000} = \mathbf{12.68\ \mu\text{s}}$$
-    *(Matches the recorded value in `evidence/phase_i/overhead_benchmark_report.json`).*
-  - **From 4-decimal rounded summary values ($0.4520\text{ s} - 0.4267\text{ s} = 0.0253\text{ s}$):**
+    *(Matches the 12.68 µs figure recorded in `evidence/phase_i/overhead_benchmark_report.json`, computed by the benchmark harness prior to JSON serialization).*
+  - **From committed 4-decimal rounded values ($0.4520\text{ s} - 0.4267\text{ s} = 0.0253\text{ s}$):**
     $$\frac{0.0253\text{ s}}{2000} = \mathbf{12.65\ \mu\text{s}}$$
-    *(Or $12.66\ \mu\text{s}$ if evaluating $0.45204 - 0.42672$). Both calculations reflect an amortized wall-clock lifecycle difference of approximately 12.65–12.68 µs.*
+    *(Because the versioned JSON artifact stores execution durations rounded to 4 decimal places, unrounded timer floats are not preserved in the file. Both 12.65 µs and 12.68 µs reflect an amortized lifecycle delta of approximately 12.65–12.68 µs).*
 
 > [!IMPORTANT]
 > **Measurement Qualification:** The values of $7.77\ \mu\text{s}$ and $12.68\ \mu\text{s}$ represent the **amortized workload wall-clock time difference per process lifecycle** (including fork, execve, address space instantiation, and termination) under multi-core concurrency. **They do not represent isolated kernel syscall entry-to-exit latency.**
