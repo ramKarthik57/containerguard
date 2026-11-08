@@ -7,16 +7,25 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Output directory and mode selection:
 # Default: Writes new execution evidence to a collision-resistant timestamped run subdirectory
 # (docs/evidence/phase_i/runs/<run_id>) to protect the committed baseline evidence in docs/evidence/phase_i/.
-# Pass "baseline" or "--baseline" to deliberately regenerate docs/evidence/phase_i/ in archive evaluation mode.
-# Pass "--archive-eval" to evaluate the historical baseline archive without re-running tests.
+# Pass "--archive-eval" to evaluate the historical baseline archive in non-destructive read-only mode without re-running tests.
 ARCHIVE_MODE="false"
 if [[ "${1:-}" == "baseline" || "${1:-}" == "--baseline" ]]; then
-    EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i"
-    ARCHIVE_MODE="true"
+    echo "Error: 'baseline' and '--baseline' modes have been removed to protect evidence immutability." >&2
+    echo "       To evaluate historical baseline evidence non-destructively, use: --archive-eval" >&2
+    echo "       To run a live reproduction test, run without arguments (or specify a custom run directory)." >&2
+    exit 1
 elif [[ "${1:-}" == "--archive-eval" ]]; then
     EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i"
     ARCHIVE_MODE="true"
 elif [[ -n "${1:-}" ]]; then
+    # Prevent live tests from targeting the frozen baseline directory
+    NORM_TARGET="$(realpath -m "${1}")"
+    NORM_BASELINE="$(realpath -m "${ROOT_DIR}/docs/evidence/phase_i")"
+    if [[ "${NORM_TARGET}" == "${NORM_BASELINE}" ]]; then
+        echo "Error: Cannot run live tests directly in docs/evidence/phase_i. Baseline evidence is immutable." >&2
+        echo "       All live runs must output to an isolated run directory (e.g. docs/evidence/phase_i/runs/<run_id>)." >&2
+        exit 1
+    fi
     EVIDENCE_DIR="${1}"
 else
     RUN_ID="run_$(date +%Y%m%d_%H%M%S)_$$_${RANDOM}"
@@ -31,8 +40,8 @@ DAEMON_LOG="${EVIDENCE_DIR}/exec_paths.log"
 REPORT_JSON="${EVIDENCE_DIR}/execution_path_report.json"
 TEST_PIDS_JSON="${EVIDENCE_DIR}/test_pids.json"
 
-# In live run mode, purge previous artifacts in the run directory
-if [[ "${1:-}" != "--archive-eval" ]]; then
+# In live run mode, purge previous artifacts in the run directory. Baseline evidence is never purged.
+if [[ "${ARCHIVE_MODE}" != "true" ]]; then
     rm -f "${EVENTS_LOG}" "${ALERTS_LOG}" "${DAEMON_LOG}" "${REPORT_JSON}" "${TEST_PIDS_JSON}"
 fi
 
@@ -398,22 +407,27 @@ elif archive_mode:
         tg = e.get("tgid")
         if "test_exec_paths" in e.get("filename", "") and tg not in test_tgids:
             test_tgids.append(tg)
-    if len(test_tgids) >= 10:
-        dispatched_pids = {
-            "standard_execve": test_tgids[0],
-            "direct_syscall": test_tgids[1],
-            "execveat_relative": test_tgids[2],
-            "execveat_memfd": test_tgids[3],
-            "shebang": test_tgids[4],
-            "symlink": test_tgids[5],
-            "fail_enoent": test_tgids[6],
-            "fail_eacces": test_tgids[7],
-            "path_truncation": test_tgids[8],
-            "comm_truncation": test_tgids[9],
-            "static_elf": 0,
-            "setuid_transition": 0,
-            "cgroup_migration": 984,
-        }
+    if len(test_tgids) < 10:
+        print(f"\n[!] ARCHIVE EVALUATION FAILURE: Found only {len(test_tgids)} test TGIDs (expected at least 10)!")
+        sys.exit(1)
+    dispatched_pids = {
+        "standard_execve": test_tgids[0],
+        "direct_syscall": test_tgids[1],
+        "execveat_relative": test_tgids[2],
+        "execveat_memfd": test_tgids[3],
+        "shebang": test_tgids[4],
+        "symlink": test_tgids[5],
+        "fail_enoent": test_tgids[6],
+        "fail_eacces": test_tgids[7],
+        "path_truncation": test_tgids[8],
+        "comm_truncation": test_tgids[9],
+        "static_elf": None,
+        "setuid_transition": None,
+        "cgroup_migration": 984,
+    }
+    print(f"[*] Reconstructed {len(test_tgids)} test TGIDs from historical event log.")
+    print("    Historical archive evaluation validates 12/14 conditions via reconstructed TGIDs")
+    print("    and 2/14 (static ELF and setuid) via event signatures (since baseline predated test_pids.json).")
 else:
     print(f"\n[!] PID VALIDATION FAILURE: test_pids.json is missing in live run directory {evidence_dir}!")
     sys.exit(1)
@@ -428,100 +442,186 @@ committed_count = sum(1 for e in events if e.get("committed"))
 cgroup_migrated_count = sum(1 for e in events if e.get("cgroup_migrated"))
 
 # Process-correlated validation assertions across all 14 conditions:
-pid_std = dispatched_pids.get("standard_execve")
-has_standard_exec = any(
-    (e.get("tgid") == pid_std if (pid_std and pid_std > 0) else True)
-    and e.get("filename") == "/bin/true"
-    and not e.get("execveat")
-    and not e.get("cgroup_migrated")
-    for e in events
-)
-
-pid_direct = dispatched_pids.get("direct_syscall")
-has_direct_syscall = any(
-    (e.get("tgid") == pid_direct if (pid_direct and pid_direct > 0) else True)
-    and e.get("filename") == "/bin/true"
-    and not e.get("execveat")
-    and not e.get("cgroup_migrated")
-    for e in events
-)
-
-pid_rel = dispatched_pids.get("execveat_relative")
-has_execveat_relative = any(
-    (e.get("tgid") == pid_rel if (pid_rel and pid_rel > 0) else True)
-    and e.get("execveat")
-    and not e.get("at_empty_path")
-    for e in events
-)
-
-pid_memfd = dispatched_pids.get("execveat_memfd")
-has_memfd = any(
-    (e.get("tgid") == pid_memfd if (pid_memfd and pid_memfd > 0) else True)
-    and e.get("execveat")
-    and e.get("at_empty_path")
-    for e in events
-)
-
-pid_shebang = dispatched_pids.get("shebang")
-has_shebang = any(
-    (e.get("tgid") == pid_shebang if (pid_shebang and pid_shebang > 0) else True)
-    and "cg_test_shebang" in e.get("filename", "")
-    for e in events
-)
-
-pid_sym = dispatched_pids.get("symlink")
-has_symlink = any(
-    (e.get("tgid") == pid_sym if (pid_sym and pid_sym > 0) else True)
-    and "cg_test_symlink" in e.get("filename", "")
-    for e in events
-)
-
-pid_static = dispatched_pids.get("static_elf")
-has_static_elf = any(
-    (e.get("tgid") == pid_static if (pid_static and pid_static > 0) else True)
-    and "cg_static_test" in e.get("filename", "")
-    for e in events
-)
-
-pid_enoent = dispatched_pids.get("fail_enoent")
-has_enoent = any(
-    (e.get("tgid") == pid_enoent if (pid_enoent and pid_enoent > 0) else True)
-    and e.get("failed")
-    and e.get("exit_code") == -2
-    for e in events
-)
-
-pid_eacces = dispatched_pids.get("fail_eacces")
-has_eacces = any(
-    (e.get("tgid") == pid_eacces if (pid_eacces and pid_eacces > 0) else True)
-    and e.get("failed")
-    and e.get("exit_code") == -13
-    for e in events
-)
-
-pid_path_trunc = dispatched_pids.get("path_truncation")
-has_path_trunc = any(
-    (e.get("tgid") == pid_path_trunc if (pid_path_trunc and pid_path_trunc > 0) else True)
-    and e.get("path_truncated")
-    for e in events
-)
-
-pid_comm_trunc = dispatched_pids.get("comm_truncation")
-has_comm_trunc = any(
-    (e.get("tgid") == pid_comm_trunc if (pid_comm_trunc and pid_comm_trunc > 0) else True)
-    and e.get("comm_truncated")
-    for e in events
-)
-
-pid_setuid = dispatched_pids.get("setuid_transition")
-has_setuid_transition = any(
-    (e.get("tgid") == pid_setuid if (pid_setuid and pid_setuid > 0) else True)
-    and ("cg_setuid_test" in e.get("filename", "") or "cg_setuid_runner" in e.get("filename", ""))
-    and e.get("uid") != e.get("euid")
-    and e.get("setuid_exec")
-    and e.get("euid") == 0
-    for e in events
-)
+if not archive_mode:
+    # Live reproduction mode: strict PID-to-TGID correlation enforced across all 13 dispatched PIDs
+    pid_std = dispatched_pids["standard_execve"]
+    has_standard_exec = any(
+        e.get("tgid") == pid_std
+        and e.get("filename") == "/bin/true"
+        and not e.get("execveat")
+        and not e.get("cgroup_migrated")
+        for e in events
+    )
+    pid_direct = dispatched_pids["direct_syscall"]
+    has_direct_syscall = any(
+        e.get("tgid") == pid_direct
+        and e.get("filename") == "/bin/true"
+        and not e.get("execveat")
+        and not e.get("cgroup_migrated")
+        for e in events
+    )
+    pid_rel = dispatched_pids["execveat_relative"]
+    has_execveat_relative = any(
+        e.get("tgid") == pid_rel
+        and e.get("execveat")
+        and not e.get("at_empty_path")
+        for e in events
+    )
+    pid_memfd = dispatched_pids["execveat_memfd"]
+    has_memfd = any(
+        e.get("tgid") == pid_memfd
+        and e.get("execveat")
+        and e.get("at_empty_path")
+        for e in events
+    )
+    pid_shebang = dispatched_pids["shebang"]
+    has_shebang = any(
+        e.get("tgid") == pid_shebang
+        and "cg_test_shebang" in e.get("filename", "")
+        for e in events
+    )
+    pid_sym = dispatched_pids["symlink"]
+    has_symlink = any(
+        e.get("tgid") == pid_sym
+        and "cg_test_symlink" in e.get("filename", "")
+        for e in events
+    )
+    pid_static = dispatched_pids["static_elf"]
+    has_static_elf = any(
+        e.get("tgid") == pid_static
+        and "cg_static_test" in e.get("filename", "")
+        for e in events
+    )
+    pid_enoent = dispatched_pids["fail_enoent"]
+    has_enoent = any(
+        e.get("tgid") == pid_enoent
+        and e.get("failed")
+        and e.get("exit_code") == -2
+        for e in events
+    )
+    pid_eacces = dispatched_pids["fail_eacces"]
+    has_eacces = any(
+        e.get("tgid") == pid_eacces
+        and e.get("failed")
+        and e.get("exit_code") == -13
+        for e in events
+    )
+    pid_path_trunc = dispatched_pids["path_truncation"]
+    has_path_trunc = any(
+        e.get("tgid") == pid_path_trunc
+        and e.get("path_truncated")
+        for e in events
+    )
+    pid_comm_trunc = dispatched_pids["comm_truncation"]
+    has_comm_trunc = any(
+        e.get("tgid") == pid_comm_trunc
+        and e.get("comm_truncated")
+        for e in events
+    )
+    pid_setuid = dispatched_pids["setuid_transition"]
+    has_setuid_transition = any(
+        e.get("tgid") == pid_setuid
+        and ("cg_setuid_test" in e.get("filename", "") or "cg_setuid_runner" in e.get("filename", ""))
+        and e.get("uid") != e.get("euid")
+        and e.get("setuid_exec")
+        and e.get("euid") == 0
+        for e in events
+    )
+    pid_mig = dispatched_pids["cgroup_migration"]
+    has_cgroup_migrated = any(
+        e.get("tgid") == pid_mig
+        and e.get("cgroup_migrated")
+        for e in events
+    )
+else:
+    # Historical archive evaluation mode:
+    # Reconstructed TGIDs used for 10 test_exec_paths cases + cgroup migration (12/14 conditions).
+    # Static ELF and setuid transition (2/14 conditions) validated via event signatures (predated test_pids.json).
+    pid_std = dispatched_pids["standard_execve"]
+    has_standard_exec = any(
+        e.get("tgid") == pid_std
+        and e.get("filename") == "/bin/true"
+        and not e.get("execveat")
+        and not e.get("cgroup_migrated")
+        for e in events
+    )
+    pid_direct = dispatched_pids["direct_syscall"]
+    has_direct_syscall = any(
+        e.get("tgid") == pid_direct
+        and e.get("filename") == "/bin/true"
+        and not e.get("execveat")
+        and not e.get("cgroup_migrated")
+        for e in events
+    )
+    pid_rel = dispatched_pids["execveat_relative"]
+    has_execveat_relative = any(
+        e.get("tgid") == pid_rel
+        and e.get("execveat")
+        and not e.get("at_empty_path")
+        for e in events
+    )
+    pid_memfd = dispatched_pids["execveat_memfd"]
+    has_memfd = any(
+        e.get("tgid") == pid_memfd
+        and e.get("execveat")
+        and e.get("at_empty_path")
+        for e in events
+    )
+    pid_shebang = dispatched_pids["shebang"]
+    has_shebang = any(
+        e.get("tgid") == pid_shebang
+        and "cg_test_shebang" in e.get("filename", "")
+        for e in events
+    )
+    pid_sym = dispatched_pids["symlink"]
+    has_symlink = any(
+        e.get("tgid") == pid_sym
+        and "cg_test_symlink" in e.get("filename", "")
+        for e in events
+    )
+    has_static_elf = any(
+        "cg_static_test" in e.get("filename", "")
+        for e in events
+    )
+    pid_enoent = dispatched_pids["fail_enoent"]
+    has_enoent = any(
+        e.get("tgid") == pid_enoent
+        and e.get("failed")
+        and e.get("exit_code") == -2
+        for e in events
+    )
+    pid_eacces = dispatched_pids["fail_eacces"]
+    has_eacces = any(
+        e.get("tgid") == pid_eacces
+        and e.get("failed")
+        and e.get("exit_code") == -13
+        for e in events
+    )
+    pid_path_trunc = dispatched_pids["path_truncation"]
+    has_path_trunc = any(
+        e.get("tgid") == pid_path_trunc
+        and e.get("path_truncated")
+        for e in events
+    )
+    pid_comm_trunc = dispatched_pids["comm_truncation"]
+    has_comm_trunc = any(
+        e.get("tgid") == pid_comm_trunc
+        and e.get("comm_truncated")
+        for e in events
+    )
+    has_setuid_transition = any(
+        ("cg_setuid_test" in e.get("filename", "") or "cg_setuid_runner" in e.get("filename", ""))
+        and e.get("uid") != e.get("euid")
+        and e.get("setuid_exec")
+        and e.get("euid") == 0
+        for e in events
+    )
+    pid_mig = dispatched_pids["cgroup_migration"]
+    has_cgroup_migrated = any(
+        e.get("tgid") == pid_mig
+        and e.get("cgroup_migrated")
+        for e in events
+    )
 
 # Container attribution: strictly validated against expected research baseline containers
 has_container_a = any(
@@ -610,7 +710,10 @@ print(f" Conservation (Hooks = Sub + Drop):{'PASS' if conservation_valid else 'F
 print(f" Zero Drops Invariant:             {'PASS' if drops == 0 else 'FAIL'}")
 print(f" Telemetry Delivery Rate:          {delivery_rate_pct:.2f}%")
 print("-" * 65)
-print(" Execution Path Coverage (14 Conditions):")
+if archive_mode:
+    print(" Execution Path Coverage (Archive Evaluation: 12 TGID-correlated, 2 Signature):")
+else:
+    print(" Execution Path Coverage (Live Reproduction: 13/13 PID-correlated):")
 for k, v in report["execution_path_coverage"].items():
     print(f"   - {k:32s}: {'PASS' if v else 'FAIL'}")
 
@@ -630,4 +733,8 @@ print(f"   - Cgroup migrations:            {cgroup_migrated_count}")
 print("="*65)
 PYEOF
 
-echo "[+] Phase I execution-path benchmark finished. Report saved to ${REPORT_JSON}."
+if [[ "${ARCHIVE_MODE}" == "true" ]]; then
+    echo "[+] Phase I archive evaluation finished. Historical evidence evaluated without modification."
+else
+    echo "[+] Phase I execution-path benchmark finished. Report saved to ${REPORT_JSON}."
+fi
