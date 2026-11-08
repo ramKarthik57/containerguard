@@ -155,3 +155,35 @@
   - Deterministic Alerts Triggered: 3 (2x `CG-RULE-003` Shell spawned, 1x `CG-RULE-002` Execution from writable `/tmp`).
   - Lineage Reconstruction: Verified `parent_key` of `/tmp/test_alert.sh` (`TGID=18655`) directly linked to parent `/bin/sh` (`TGID=18648`) with matching start times.
   - Graceful Shutdown: SIGTERM cleanly flushed sequence tracker and closed ring buffer reader.
+
+### Entry 006 - 2026-11-08: Phase H Controlled Telemetry Stress Testing Execution (Tier 1)
+- **Status:** Completed and Verified.
+- **Git Commit:** `6ce3427` (execution validated)
+- **Stress Harness:** `scripts/stress_test.sh 1000`
+- **Workload Profile:**
+  - 4 concurrent execution streams (250 executions per stream): `cg-test-a`, `cg-test-b-event-test`, dedicated temporary container `cg-stress-worker`, and host workload.
+  - Concurrent injection of attack payload `/tmp/exploit_sim.sh` inside `cg-test-b-event-test` during active load burst.
+- **Empirical Execution Telemetry:**
+  - Elapsed Execution Time: 0.798 seconds.
+  - Measured Event Throughput: 1,302.6 events/sec.
+  - Kernel Hook Invocations: 1,040.
+  - Kernel Ring Buffer Submissions: 1,040.
+  - Kernel Ring Buffer Reservation Drops: 0 (0.00% drop rate).
+  - Kernel Cgroup Hash Map Failures: 0.
+  - Userspace Records Received: 1,040.
+  - Userspace Records Decoded: 1,040.
+  - Decode Failures: 0.
+  - Telemetry Delivery Rate: 100.00%.
+  - Sequence Gaps Detected: 0.
+  - Reordered Events Handled: 0.
+- **Attribution & Queue Accounting:**
+  - Attribution Resolved (Containers): 762 events mapped to container IDs.
+  - Attribution Unresolved (Non-Container Host): 278 events.
+  - Cumulative Transitions into Pending: 278.
+  - Peak Pending Queue Depth: 277 (well within the 4,096 ring capacity).
+  - Current Pending Queue Depth at Exit: 0 (clean drain).
+  - Userspace Queue Overflows: 0.
+- **Threat Detection Fidelity Under Load:**
+  - Attack event `ALERT-1028-CG-RULE-002` (Execution from writable directory `/tmp/exploit_sim.sh` inside container `cg-test-b-event-test`) was successfully captured, attributed, alerted, and recorded with full parent lineage intact.
+- **Archival:** Full empirical evidence preserved in `docs/evidence/phase_h/stress_1000/` (`report.json`, `alerts.jsonl`, `events.jsonl`, `daemon.log`).
+

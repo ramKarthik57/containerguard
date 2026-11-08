@@ -70,3 +70,46 @@ Validate the resilience of ContainerGuard under telemetry pressure, lifecycle ra
 | **Deterministic Alerts Triggered** | 3 | 2 shell executions, 1 writable exec | 100% Detection Recall |
 | **Lineage Integrity** | Complete | Parent keys match leader start times | Verified |
 | **Daemon Teardown** | Clean | SIGTERM handled, reader unblocked | Verified |
+
+---
+
+## Experiment 3: Telemetry Integrity Stress Testing Under Concurrent Load (Phase H)
+
+### Objective
+Evaluate ContainerGuard's telemetry integrity, ingestion rate, attribution resilience, and detection fidelity under concurrent execution pressure across multiple container streams.
+
+### Workload Dispatch Architecture
+Executed via `sudo ./scripts/stress_test.sh <count>`:
+* **4 Concurrent Execution Streams:**
+  - Stream 1: Container `cg-test-a` (executing rapid `expr` workloads)
+  - Stream 2: Container `cg-test-b-event-test` (executing rapid `expr` workloads)
+  - Stream 3: Dedicated temporary container `cg-stress-worker` (executing rapid `expr` workloads)
+  - Stream 4: Host workload stream (exercising non-container attribution pipeline)
+* **Adversarial Payload Injection:** `/tmp/exploit_sim.sh` executed inside `cg-test-b-event-test` mid-stream during peak concurrent load.
+
+### Empirical Results Summary
+
+| Metric | Tier 1 (1,000 Target) | Tier 2 (5,000 Target) | Tier 3 (10,000 Target) | Tier 4 (25,000 Target) |
+|---|---|---|---|---|
+| **Workload Duration** | **0.798s** | *Pending* | *Pending* | *Pending* |
+| **Observed Kernel Hooks** | **1,040** | *Pending* | *Pending* | *Pending* |
+| **Ring Buffer Submissions** | **1,040** | *Pending* | *Pending* | *Pending* |
+| **Ring Buffer Drops** | **0 (0.00%)** | *Pending* | *Pending* | *Pending* |
+| **Cgroup Map Failures** | **0** | *Pending* | *Pending* | *Pending* |
+| **Userspace Records Received** | **1,040** | *Pending* | *Pending* | *Pending* |
+| **Userspace Decoded Records** | **1,040** | *Pending* | *Pending* | *Pending* |
+| **Sequence Gaps Detected** | **0** | *Pending* | *Pending* | *Pending* |
+| **Reordered Events Handled** | **0** | *Pending* | *Pending* | *Pending* |
+| **Attribution Resolved (Containers)** | **762** | *Pending* | *Pending* | *Pending* |
+| **Attribution Unresolved (Non-Cont)**| **278** | *Pending* | *Pending* | *Pending* |
+| **Current Pending Queue Depth** | **0** | *Pending* | *Pending* | *Pending* |
+| **Peak Pending Queue Depth** | **277** | *Pending* | *Pending* | *Pending* |
+| **Event Throughput** | **1,302.6 events/s** | *Pending* | *Pending* | *Pending* |
+| **Telemetry Delivery Rate** | **100.00%** | *Pending* | *Pending* | *Pending* |
+| **Critical Alert Retention** | **100% (Alert 1028)** | *Pending* | *Pending* | *Pending* |
+
+### Key Findings
+1. **Zero Telemetry Loss:** At 1,302 events/second, the 16 MB ring buffer experienced zero reservation drops and zero userspace sequence gaps.
+2. **Attribution Accuracy:** 100% of container executions (762 events) were correctly resolved to their respective containers. Host background executions were cleanly segregated as non-container events without false container claims.
+3. **Detection Retention:** Critical security violations (Alert 1028: `CG-RULE-002` execution from `/tmp`) were detected, attributed, and stored without loss or delay despite intense concurrency.
+
