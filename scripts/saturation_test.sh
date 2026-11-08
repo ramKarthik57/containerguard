@@ -72,7 +72,7 @@ echo "[1/6] Launching ContainerGuard daemon (RB: ${RINGBUF_KB} KiB, Pause: ${PAU
     -pending-ttl 2s > "$DAEMON_LOG" 2>&1 &
 CG_PID=$!
 
-sleep 2
+sleep 0.5
 if ! kill -0 "$CG_PID" 2>/dev/null; then
     echo "[-] ContainerGuard failed to start. Logs:"
     cat "$DAEMON_LOG"
@@ -135,7 +135,18 @@ for c in "${TEMP_CONTAINERS[@]}"; do
 done
 
 echo "[5/6] Extracting final telemetry integrity accounting..."
-sed -n '/=== FINAL TELEMETRY INTEGRITY ACCOUNTING REPORT ===/,$p' "$DAEMON_LOG" | tail -n +2 > "$REPORT_JSON"
+python3 -c "
+with open('$DAEMON_LOG') as f:
+    content = f.read()
+marker = '=== FINAL TELEMETRY INTEGRITY ACCOUNTING REPORT ==='
+if marker in content:
+    sub = content.split(marker)[1]
+    start = sub.find('{')
+    end = sub.rfind('}')
+    if start != -1 and end != -1:
+        with open('$REPORT_JSON', 'w') as out:
+            out.write(sub[start:end+1] + '\n')
+"
 
 echo "[6/6] Computing Saturation and Telemetry Boundary Analysis..."
 
