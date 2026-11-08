@@ -1,0 +1,41 @@
+name: Bug Report
+description: Report an issue or bug in ContainerGuard's 50% verified milestone components.
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue. Please ensure your report relates to implemented components within the frozen 50% milestone.
+  - type: input
+    id: environment
+    attributes:
+      label: Host Environment
+      description: Linux kernel version, distribution, Docker version, Clang version.
+      placeholder: "e.g. Linux 6.18.33.1, Ubuntu 26.04, Docker 29.9.3, Clang 21.1.8"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Commands or scripts executed to trigger the issue.
+      placeholder: |
+        1. Compile daemon via ./scripts/build.sh
+        2. Run sudo ./bin/containerguard ...
+        3. Trigger workload ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Daemon Logs or Terminal Output
+      description: Relevant output from the daemon or test scripts.
+      render: shell
