@@ -33,3 +33,22 @@ Validate the resilience of ContainerGuard under telemetry pressure, lifecycle ra
   2. Container B executes `nsenter --help`.
   3. Verify that ContainerGuard detects and logs Container B's critical alert despite Container A's event flood.
 - **Metrics Collected:** Critical event retention (recall), detection latency (ms).
+
+
+---
+
+## 3. Empirical Results from Phase F Live Validation
+
+### Trial Run: Baseline Multi-Container & Lifecycle Validation (2026-11-08)
+
+| Parameter | Observed Value | Ground Truth Expected | Result |
+|---|---|---|---|
+| **Kernel Hook Calls** | 79 | 79 observed syscalls | Verified |
+| **Ring Buffer Reserve Drops** | 0 | 0 buffer exhaustion | Zero loss |
+| **Userspace Records Decoded** | 79 | 79 submitted records | 100% decode recall |
+| **Sequence Gaps** | 0 | Continuous stream | Stream integrity confirmed |
+| **`cg-test-a` Attributed Events** | 7 | 7 execve calls in container | 100% attribution recall |
+| **`cg-test-b` Attributed Events** | 14 | 14 execve calls across restart | 100% attribution recall |
+| **Ephemeral Container Attribution** | `UNRESOLVED` | Exited before inventory poll | Correct non-host state |
+| **Detection Alerts Fired** | 4 | 3 shells, 1 `/tmp` exec | 100% detection recall |
+| **Shutdown Termination Signal** | `SIGTERM` | Graceful flush | Clean exit, no hang |

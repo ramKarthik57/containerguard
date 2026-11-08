@@ -84,3 +84,42 @@
   5. *Privilege Model Enforcement:*
      - Explicitly preserved existing privilege model: no passwordless sudo rules and no docker group modifications.
      - Authored reproducible live integration test runner `scripts/live_integration_test.sh` for user-authenticated execution context.
+
+### Entry 004 - 2026-11-08: Phase F Live Kernel & Docker Validation Results
+- **Status:** Completed Successfully.
+- **Environment:**
+  - Linux Kernel: `6.18.33.1-microsoft-standard-WSL2` (x86_64)
+  - Container Runtime: Docker Engine 29.9.3, containerd 2.4.2
+  - Cgroup Hierarchy: cgroup v2 (`/sys/fs/cgroup`)
+- **Execution:**
+  - Command: `sudo ./scripts/live_integration_test.sh`
+  - PID: `15242`
+  - Log Directory: `/tmp/containerguard_validation/`
+- **Empirical Measured Results:**
+  - `kernel_hook_invocations`: 79
+  - `kernel_ringbuf_reserve_drops`: 0
+  - `kernel_ringbuf_submitted`: 79
+  - `kernel_cgroup_map_fails`: 0
+  - `userspace_records_received`: 79
+  - `userspace_records_decoded`: 79
+  - `userspace_decode_failures`: 0
+  - `sequence_gaps_detected`: 0
+  - `reordered_events`: 0
+  - `events_processed`: 78
+  - `kernel_drop_rate_pct`: 0.00%
+  - `userspace_loss_count`: 0
+- **Container Attribution Validation:**
+  - `cg-test-a` (ID: `52274ed23949`, cgroup: `5400`): 7 events resolved (`/bin/uname`, `/bin/ls`, `/bin/date`, runc runtime).
+  - `cg-test-b-event-test` (ID: `2b604b614c95`): 14 events resolved across container restart.
+    - Initial cgroup: `5888` (`/bin/id`, `/bin/sh`, `/tmp/test_alert.sh`).
+    - Restart cgroup: `5960` (`/bin/uptime`, `/bin/sleep`).
+    - The resolver successfully caught the Docker `restart` event, demoted `5888` to stale mapping cache, re-inspected the new PID and new cgroup v2 inode `5960`, and resumed attribution without data loss.
+  - Ephemeral short-lived container (`docker run --rm busybox hostname`): Executed and exited within milliseconds (cgroup `6032`, seq `69`). Correctly buffered as `PENDING`, expired on timeout to `UNRESOLVED`. Verified zero false-positive host attribution.
+- **Deterministic Detection Alerts Triggered (4 total):**
+  1. `ALERT-23-CG-RULE-003`: `Shell Spawned Inside Container` (`/bin/sh` in `cg-test-b-event-test`, cgroup `5888`)
+  2. `ALERT-27-CG-RULE-003`: `Shell Spawned Inside Container` (`/bin/sh` in `cg-test-b-event-test`, cgroup `5888`)
+  3. `ALERT-29-CG-RULE-002`: `Execution From Writable Directory` (`/tmp/test_alert.sh` in `cg-test-b-event-test`, cgroup `5888`)
+  4. `ALERT-51-CG-RULE-003`: `Shell Spawned Inside Container` (`/bin/sh` in `cg-test-b-event-test`, cgroup `5960`, post-restart)
+- **Lifecycle & Shutdown:**
+  - Handled SIGTERM cleanly (`kill -TERM 15242`).
+  - Ring buffer reader closed asynchronously and printed final telemetry integrity accounting report.
