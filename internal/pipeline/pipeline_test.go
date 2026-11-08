@@ -151,13 +151,13 @@ func TestSequenceGapDetection(t *testing.T) {
 	// Sample 1: Seq = 10
 	s1 := make([]byte, telemetry.RawExecEventSize)
 	binary.LittleEndian.PutUint64(s1[8:16], 1)
-	binary.LittleEndian.PutUint64(s1[16:24], 10)
+	binary.LittleEndian.PutUint64(s1[24:32], 10)
 	ingester.ProcessRawSample(ctx, s1)
 
 	// Sample 2: Seq = 15 (5 events dropped in kernel ring buffer: 11, 12, 13, 14)
 	s2 := make([]byte, telemetry.RawExecEventSize)
 	binary.LittleEndian.PutUint64(s2[8:16], 1)
-	binary.LittleEndian.PutUint64(s2[16:24], 15)
+	binary.LittleEndian.PutUint64(s2[24:32], 15)
 	ingester.ProcessRawSample(ctx, s2)
 
 	// Flush sequence tracker on shutdown to retire pending gaps

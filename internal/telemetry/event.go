@@ -24,9 +24,27 @@ const (
 const (
 	FlagStartTimeEstimated       uint32 = 1 << 0
 	FlagParentStartTimeEstimated uint32 = 1 << 1
+	FlagPathTruncated            uint32 = 1 << 2
+	FlagCommTruncated            uint32 = 1 << 3
+	FlagExecveat                 uint32 = 1 << 4
+	FlagAtEmptyPath              uint32 = 1 << 5
+	FlagCommittedExec            uint32 = 1 << 6
+	FlagExecFailed               uint32 = 1 << 7
+	FlagCgroupMigrated           uint32 = 1 << 8
 )
 
-// ProcessKey is a structured, collision-resistant process identity preventing PID reuse.
+// ProcessInstanceKey represents the immutable kernel process identity (TGID + start time).
+// This tuple is collision-resistant across PID recycling and invariant under cgroup migration.
+type ProcessInstanceKey struct {
+	TGID        uint32 `json:"tgid"`
+	StartTimeNS uint64 `json:"start_time_ns"`
+}
+
+func (k ProcessInstanceKey) String() string {
+	return fmt.Sprintf("tgid:%d/start:%d", k.TGID, k.StartTimeNS)
+}
+
+// ProcessKey is a structured process identity combining immutable identity with execution context.
 type ProcessKey struct {
 	CgroupID    uint64 `json:"cgroup_id"`
 	TGID        uint32 `json:"tgid"`
@@ -37,13 +55,22 @@ func (k ProcessKey) String() string {
 	return fmt.Sprintf("cg:%d/tgid:%d/start:%d", k.CgroupID, k.TGID, k.StartTimeNS)
 }
 
+// InstanceKey extracts the immutable instance identity tuple.
+func (k ProcessKey) InstanceKey() ProcessInstanceKey {
+	return ProcessInstanceKey{
+		TGID:        k.TGID,
+		StartTimeNS: k.StartTimeNS,
+	}
+}
+
 // RawExecEvent matches the memory layout of struct exec_event in bpf/execve_events.c
-// Total size: 8 + 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 16 + 256 = 336 bytes.
-const RawExecEventSize = 336
+// Total size: 6*8 + 6*4 + 4 + 4 + 4 + 4 + 16 + 256 = 360 bytes.
+const RawExecEventSize = 360
 
 type RawExecEvent struct {
 	TimestampNS       uint64
 	CgroupID          uint64
+	ParentCgroupID    uint64
 	SeqNum            uint64
 	StartTimeNS       uint64
 	ParentStartTimeNS uint64
@@ -54,6 +81,11 @@ type RawExecEvent struct {
 	UID        uint32
 	GID        uint32
 	Flags      uint32
+
+	Dfd      int32
+	AtFlags  uint32
+	ExitCode int32
+	Pad      uint32
 
 	Comm     [16]byte
 	Filename [256]byte
@@ -68,6 +100,7 @@ type SecurityEvent struct {
 	KernelTimeNS             uint64           `json:"kernel_time_ns"`
 	SeqNum                   uint64           `json:"seq_num"`
 	CgroupID                 uint64           `json:"cgroup_id"`
+	ParentCgroupID           uint64           `json:"parent_cgroup_id"`
 	TID                      uint32           `json:"tid"`
 	TGID                     uint32           `json:"tgid"`
 	ParentTGID               uint32           `json:"parent_tgid"`
@@ -75,6 +108,16 @@ type SecurityEvent struct {
 	ParentStartTimeNS        uint64           `json:"parent_start_time_ns"`
 	StartTimeEstimated       bool             `json:"start_time_estimated"`
 	ParentStartTimeEstimated bool             `json:"parent_start_time_estimated"`
+	PathTruncated            bool             `json:"path_truncated"`
+	CommTruncated            bool             `json:"comm_truncated"`
+	Execveat                 bool             `json:"execveat"`
+	AtEmptyPath              bool             `json:"at_empty_path"`
+	Committed                bool             `json:"committed"`
+	Failed                   bool             `json:"failed"`
+	CgroupMigrated           bool             `json:"cgroup_migrated"`
+	Dfd                      int32            `json:"dfd"`
+	AtFlags                  uint32           `json:"at_flags"`
+	ExitCode                 int32            `json:"exit_code"`
 	UID                      uint32           `json:"uid"`
 	GID                      uint32           `json:"gid"`
 	Comm                     string           `json:"comm"`
@@ -95,19 +138,25 @@ func DecodeRawExecEvent(buf []byte, target *RawExecEvent) error {
 
 	target.TimestampNS = binary.LittleEndian.Uint64(buf[0:8])
 	target.CgroupID = binary.LittleEndian.Uint64(buf[8:16])
-	target.SeqNum = binary.LittleEndian.Uint64(buf[16:24])
-	target.StartTimeNS = binary.LittleEndian.Uint64(buf[24:32])
-	target.ParentStartTimeNS = binary.LittleEndian.Uint64(buf[32:40])
+	target.ParentCgroupID = binary.LittleEndian.Uint64(buf[16:24])
+	target.SeqNum = binary.LittleEndian.Uint64(buf[24:32])
+	target.StartTimeNS = binary.LittleEndian.Uint64(buf[32:40])
+	target.ParentStartTimeNS = binary.LittleEndian.Uint64(buf[40:48])
 
-	target.TID = binary.LittleEndian.Uint32(buf[40:44])
-	target.TGID = binary.LittleEndian.Uint32(buf[44:48])
-	target.ParentTGID = binary.LittleEndian.Uint32(buf[48:52])
-	target.UID = binary.LittleEndian.Uint32(buf[52:56])
-	target.GID = binary.LittleEndian.Uint32(buf[56:60])
-	target.Flags = binary.LittleEndian.Uint32(buf[60:64])
+	target.TID = binary.LittleEndian.Uint32(buf[48:52])
+	target.TGID = binary.LittleEndian.Uint32(buf[52:56])
+	target.ParentTGID = binary.LittleEndian.Uint32(buf[56:60])
+	target.UID = binary.LittleEndian.Uint32(buf[60:64])
+	target.GID = binary.LittleEndian.Uint32(buf[64:68])
+	target.Flags = binary.LittleEndian.Uint32(buf[68:72])
 
-	copy(target.Comm[:], buf[64:80])
-	copy(target.Filename[:], buf[80:336])
+	target.Dfd = int32(binary.LittleEndian.Uint32(buf[72:76]))
+	target.AtFlags = binary.LittleEndian.Uint32(buf[76:80])
+	target.ExitCode = int32(binary.LittleEndian.Uint32(buf[80:84]))
+	target.Pad = binary.LittleEndian.Uint32(buf[84:88])
+
+	copy(target.Comm[:], buf[88:104])
+	copy(target.Filename[:], buf[104:360])
 
 	return nil
 }
@@ -129,6 +178,13 @@ func NewSecurityEvent(raw RawExecEvent) *SecurityEvent {
 
 	startTimeEstimated := (raw.Flags & FlagStartTimeEstimated) != 0
 	parentStartTimeEstimated := (raw.Flags & FlagParentStartTimeEstimated) != 0
+	pathTruncated := (raw.Flags & FlagPathTruncated) != 0
+	commTruncated := (raw.Flags & FlagCommTruncated) != 0
+	execveat := (raw.Flags & FlagExecveat) != 0
+	atEmptyPath := (raw.Flags & FlagAtEmptyPath) != 0
+	committed := (raw.Flags & FlagCommittedExec) != 0
+	failed := (raw.Flags & FlagExecFailed) != 0
+	cgroupMigrated := (raw.Flags & FlagCgroupMigrated) != 0
 
 	key := ProcessKey{
 		CgroupID:    raw.CgroupID,
@@ -136,8 +192,13 @@ func NewSecurityEvent(raw RawExecEvent) *SecurityEvent {
 		StartTimeNS: raw.StartTimeNS,
 	}
 
+	parentCgroupID := raw.ParentCgroupID
+	if parentCgroupID == 0 {
+		parentCgroupID = raw.CgroupID
+	}
+
 	parentKey := ProcessKey{
-		CgroupID:    raw.CgroupID,
+		CgroupID:    parentCgroupID,
 		TGID:        raw.ParentTGID,
 		StartTimeNS: raw.ParentStartTimeNS,
 	}
@@ -150,6 +211,7 @@ func NewSecurityEvent(raw RawExecEvent) *SecurityEvent {
 		KernelTimeNS:             raw.TimestampNS,
 		SeqNum:                   raw.SeqNum,
 		CgroupID:                 raw.CgroupID,
+		ParentCgroupID:           parentCgroupID,
 		TID:                      raw.TID,
 		TGID:                     raw.TGID,
 		ParentTGID:               raw.ParentTGID,
@@ -157,6 +219,16 @@ func NewSecurityEvent(raw RawExecEvent) *SecurityEvent {
 		ParentStartTimeNS:        raw.ParentStartTimeNS,
 		StartTimeEstimated:       startTimeEstimated,
 		ParentStartTimeEstimated: parentStartTimeEstimated,
+		PathTruncated:            pathTruncated,
+		CommTruncated:            commTruncated,
+		Execveat:                 execveat,
+		AtEmptyPath:              atEmptyPath,
+		Committed:                committed,
+		Failed:                   failed,
+		CgroupMigrated:           cgroupMigrated,
+		Dfd:                      raw.Dfd,
+		AtFlags:                  raw.AtFlags,
+		ExitCode:                 raw.ExitCode,
 		UID:                      raw.UID,
 		GID:                      raw.GID,
 		Comm:                     comm,
@@ -183,14 +255,23 @@ func (e *SecurityEvent) String() string {
 		estTag = "(est)"
 	}
 
+	statusTag := "EXEC"
+	if e.Failed {
+		statusTag = fmt.Sprintf("FAIL(%d)", e.ExitCode)
+	} else if e.Committed {
+		statusTag = "COMMITTED"
+	}
+
 	return fmt.Sprintf(
-		"TIME=%s | STATE=%s | SEQ=%d | CONTAINER=%s | CID=%s | CGROUP=%d | TGID=%d | TID=%d | PPID=%d | START=%d%s | COMM=%s | EXEC=%s",
+		"TIME=%s | STATUS=%s | STATE=%s | SEQ=%d | CONTAINER=%s | CID=%s | CGROUP=%d (PCG=%d) | TGID=%d | TID=%d | PPID=%d | START=%d%s | COMM=%s | EXEC=%s",
 		e.CapturedAt.Format(time.RFC3339Nano),
+		statusTag,
 		e.State,
 		e.SeqNum,
 		name,
 		cid,
 		e.CgroupID,
+		e.ParentCgroupID,
 		e.TGID,
 		e.TID,
 		e.ParentTGID,

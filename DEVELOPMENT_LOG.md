@@ -269,3 +269,47 @@
 
 
 
+
+### Entry 011 - 2026-11-08: Phase I Adversarial Telemetry, Execution-Path Coverage, Detection Validation, and Overhead Evaluation
+- **Status:** Phase I Completed & Fully Validated.
+- **Phase I.0 Baseline Verification:**
+  - HEAD at `96f36ce` verified. Binary hashes for `bin/containerguard` (`fcb2d144...`) and `bpf/execve_events.o` (`a03f97cb...`) matched baseline. Unit tests verified passing.
+- **Phase I.1 Process Identity & Cgroup Migration:**
+  - Decoupled immutable process instance identity (`ProcessInstanceKey{TGID, StartTimeNS}`) from mutable execution context (`CgroupID`).
+  - Implemented kernel-space parent cgroup resolution via BPF CO-RE: `BPF_CORE_READ(parent_leader, cgroups, dfl_cgrp, kn, id)`, fixing cross-cgroup container parentage.
+  - Added cgroup migration audit and tracking in `LineageTracker`: processes migrating between cgroups preserve identity and ancestry, with previous cgroups recorded in `node.CgroupHistory` and flagged as `cgroup_migrated: true`.
+- **Phase I.2 & I.3 Multi-Tracepoint Execution Coverage & Adversarial Telemetry:**
+  - Extended kernel eBPF engine to attach 5 tracepoints:
+    1. `tracepoint/syscalls/sys_enter_execve`
+    2. `tracepoint/syscalls/sys_enter_execveat`
+    3. `tracepoint/sched/sched_process_exec` (Committed executions)
+    4. `tracepoint/syscalls/sys_exit_execve` (Failed attempts)
+    5. `tracepoint/syscalls/sys_exit_execveat` (Failed attempts)
+  - Implemented in-flight attempt tracking using an LRU hash map (`active_exec_attempts`) and per-CPU scratchpad (`attempt_scratch`), eliminating kernel stack pressure while preventing memory leaks.
+  - Intercepts and validates all execution paths in live Linux kernel:
+    - Standard `execve`, direct syscall `syscall(SYS_execve, ...)`, `execveat` relative dirfd, `execveat` with `AT_EMPTY_PATH` (anonymous memfd), shebang scripts, symlink traversal, static ELF binaries, setuid binaries, and containerized workloads.
+  - Distinguishes execution attempts from committed executions:
+    - Successful executions finalized on `sched_process_exec` (`CG_FLAG_COMMITTED_EXEC`).
+    - Failed executions finalized on `sys_exit_execve` (`CG_FLAG_EXEC_FAILED`) with negative errno (-2 for ENOENT, -13 for EACCES).
+  - Validated boundary conditions: pathname truncation (>256B), comm truncation (15+ chars), and PID recycling.
+  - Live empirical run: 72 hooks observed, 72 ring buffer submissions, 0 drops, 72 decoded (100.00% delivery, exact conservation satisfied).
+- **Phase I.4 Detection Engine Validation & False-Positive Evaluation:**
+  - Evaluated against a mixed corpus of 133 events: 121 benign developer events (Git operations, GCC compilation toolchain, container queries) and 12 attack simulations.
+  - `CG-RULE-001` (Breakout Utilities): TP=4, FP=0, TN=129, FN=0 | Precision=100%, Recall=100%, FPR=0.00%.
+  - `CG-RULE-002` (Writable Directory Execution): TP=3, FP=0, TN=130, FN=0 | Precision=100%, Recall=100%, FPR=0.00%.
+  - `CG-RULE-003` (Container Interactive Shells): TP=5, FP=0, TN=128, FN=0 | Precision=100%, Recall=100%, FPR=0.00%.
+  - Zero false positives observed across all developer workloads.
+- **Phase I.5 Monitoring Overhead Evaluation:**
+  - Benchmarked 2,000 concurrent executions across 4 streams:
+    - Baseline (Unmonitored): 0.4492s (4,451.91 ev/s).
+    - Monitored (ContainerGuard Active): 0.4648s (4,303.08 ev/s).
+    - Execution Time Overhead: +3.46%.
+    - Throughput Impact: -3.34%.
+    - Marginal Latency per Event: 7.77 microseconds.
+    - Daemon CPU: < 0.1%, Daemon RSS: 6.02 MiB.
+- **Phase I.6 Artifacts Authored:**
+  - `docs/PHASE_I_ADVERSARIAL_EVALUATION.md`
+  - `docs/EXECUTION_PATH_COVERAGE.md`
+  - `docs/DETECTION_VALIDATION.md`
+  - `docs/OVERHEAD_EVALUATION.md`
+  - Evidence archived in `docs/evidence/phase_i/`.

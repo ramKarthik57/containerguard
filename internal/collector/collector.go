@@ -50,7 +50,7 @@ type BPFCollector struct {
 
 	spec       *ebpf.CollectionSpec
 	collection *ebpf.Collection
-	tpLink     link.Link
+	links      []link.Link
 	ringReader *ringbuf.Reader
 
 	mu     sync.Mutex
@@ -84,7 +84,7 @@ func NewBPFCollectorWithConfig(
 	}
 }
 
-// Start loads the eBPF object, attaches the tracepoint, and starts ring buffer draining.
+// Start loads the eBPF object, attaches all execution tracepoints, and starts ring buffer draining.
 func (c *BPFCollector) Start(ctx context.Context) error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return fmt.Errorf("removing memlock rlimit: %w", err)
@@ -108,34 +108,51 @@ func (c *BPFCollector) Start(ctx context.Context) error {
 	}
 	c.collection = collection
 
-	prog := collection.Programs["cg_execve_events"]
-	if prog == nil {
-		collection.Close()
-		return fmt.Errorf("BPF program 'cg_execve_events' not found in object")
-	}
-
 	eventsMap := collection.Maps["events"]
 	if eventsMap == nil {
 		collection.Close()
 		return fmt.Errorf("ring buffer map 'events' not found")
 	}
 
-	tp, err := link.Tracepoint("syscalls", "sys_enter_execve", prog, nil)
-	if err != nil {
-		collection.Close()
-		return fmt.Errorf("attaching tracepoint sys_enter_execve: %w", err)
+	// Tracepoint program attachment definitions
+	tpSpecs := []struct {
+		group   string
+		name    string
+		progKey string
+	}{
+		{"syscalls", "sys_enter_execve", "cg_execve_events"},
+		{"syscalls", "sys_enter_execveat", "cg_execveat_events"},
+		{"sched", "sched_process_exec", "cg_sched_process_exec"},
+		{"syscalls", "sys_exit_execve", "cg_execve_exit"},
+		{"syscalls", "sys_exit_execveat", "cg_execveat_exit"},
 	}
-	c.tpLink = tp
+
+	for _, t := range tpSpecs {
+		prog := collection.Programs[t.progKey]
+		if prog == nil {
+			c.closeLinks()
+			collection.Close()
+			return fmt.Errorf("BPF program '%s' not found in object", t.progKey)
+		}
+		l, err := link.Tracepoint(t.group, t.name, prog, nil)
+		if err != nil {
+			c.closeLinks()
+			collection.Close()
+			return fmt.Errorf("attaching tracepoint %s/%s: %w", t.group, t.name, err)
+		}
+		c.links = append(c.links, l)
+		log.Printf("[collector] attached tracepoint %s/%s -> %s", t.group, t.name, t.progKey)
+	}
 
 	reader, err := ringbuf.NewReader(eventsMap)
 	if err != nil {
-		tp.Close()
+		c.closeLinks()
 		collection.Close()
 		return fmt.Errorf("initializing ring buffer reader: %w", err)
 	}
 	c.ringReader = reader
 
-	log.Printf("[collector] eBPF program loaded: %s (tracepoint sys_enter_execve attached)", c.bpfPath)
+	log.Printf("[collector] eBPF telemetry engine active: %s (%d tracepoints attached)", c.bpfPath, len(c.links))
 
 	// Clean shutdown helper: when ctx cancels, stop the ring reader to unblock readLoop
 	go func() {
@@ -201,6 +218,15 @@ func (c *BPFCollector) StopReader() {
 	}
 }
 
+func (c *BPFCollector) closeLinks() {
+	for _, l := range c.links {
+		if l != nil {
+			_ = l.Close()
+		}
+	}
+	c.links = nil
+}
+
 // Close safely unloads eBPF programs, links, and readers.
 func (c *BPFCollector) Close() error {
 	c.mu.Lock()
@@ -217,11 +243,7 @@ func (c *BPFCollector) Close() error {
 			firstErr = err
 		}
 	}
-	if c.tpLink != nil {
-		if err := c.tpLink.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
+	c.closeLinks()
 	if c.collection != nil {
 		c.collection.Close()
 	}

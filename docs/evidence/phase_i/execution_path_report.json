@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_events_captured": 72,
+    "kernel_hook_calls": 72,
+    "kernel_submissions": 72,
+    "kernel_reserve_drops": 0,
+    "userspace_decoded": 72,
+    "conservation_satisfied": true,
+    "delivery_rate_percent": 100.0
+  },
+  "execution_path_coverage": {
+    "standard_execve": true,
+    "direct_syscall_execve": true,
+    "execveat_relative": true,
+    "execveat_at_empty_path_memfd": true,
+    "shebang_script": true,
+    "symlink_traversal": true,
+    "static_elf_binary": true,
+    "failed_exec_enoent": true,
+    "failed_exec_eacces": true,
+    "container_workload_attribution": true,
+    "cgroup_migration_tracking": true
+  },
+  "feature_accounting": {
+    "execveat_invocations": 2,
+    "at_empty_path_invocations": 1,
+    "path_truncated_events": 1,
+    "comm_truncated_events": 34,
+    "committed_executions": 70,
+    "failed_execution_attempts": 2,
+    "cgroup_migrated_events": 1
+  },
+  "kernel_accounting": {
+    "timestamp": "2026-11-08T06:45:03.855571952Z",
+    "kernel_hook_invocations": 72,
+    "kernel_ringbuf_reserve_drops": 0,
+    "kernel_ringbuf_submitted": 72,
+    "kernel_cgroup_map_fails": 0,
+    "userspace_records_received": 72,
+    "userspace_records_decoded": 72,
+    "userspace_decode_failures": 0,
+    "attribution_pending_transitions": 66,
+    "current_pending_queue_depth": 0,
+    "peak_pending_queue_depth": 66,
+    "attribution_resolved": 6,
+    "attribution_unresolved": 66,
+    "attribution_stale_mapping": 0,
+    "attribution_host_confirmed": 0,
+    "userspace_queue_overflows": 0,
+    "sequence_gaps_detected": 0,
+    "reordered_events": 0,
+    "events_processed": 72,
+    "processing_failures": 0,
+    "kernel_drop_rate_pct": 0,
+    "userspace_loss_count": 0
+  }
+}

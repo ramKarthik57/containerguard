@@ -1,0 +1,49 @@
+{
+  "corpus_summary": {
+    "total_events": 133,
+    "benign_developer_events": 121,
+    "attack_simulation_events": 12,
+    "total_alerts_emitted": 12
+  },
+  "rules_evaluation": {
+    "CG-RULE-001": {
+      "rule_name": "Privileged Breakout Utility (nsenter, unshare, chroot, modprobe)",
+      "confusion_matrix": {
+        "TP": 4,
+        "FP": 0,
+        "TN": 129,
+        "FN": 0
+      },
+      "precision_pct": 100.0,
+      "recall_sensitivity_pct": 100.0,
+      "specificity_pct": 100.0,
+      "false_positive_rate_pct": 0.0
+    },
+    "CG-RULE-002": {
+      "rule_name": "Writable Directory Execution (/tmp, /dev/shm, /var/tmp)",
+      "confusion_matrix": {
+        "TP": 3,
+        "FP": 0,
+        "TN": 130,
+        "FN": 0
+      },
+      "precision_pct": 100.0,
+      "recall_sensitivity_pct": 100.0,
+      "specificity_pct": 100.0,
+      "false_positive_rate_pct": 0.0
+    },
+    "CG-RULE-003": {
+      "rule_name": "Interactive Shell Spawned in Container (/bin/sh)",
+      "confusion_matrix": {
+        "TP": 5,
+        "FP": 0,
+        "TN": 128,
+        "FN": 0
+      },
+      "precision_pct": 100.0,
+      "recall_sensitivity_pct": 100.0,
+      "specificity_pct": 100.0,
+      "false_positive_rate_pct": 0.0
+    }
+  }
+}

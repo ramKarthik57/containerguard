@@ -151,3 +151,52 @@ Identify the empirical telemetry loss boundary of the eBPF monitor by evaluating
 
 
 
+
+---
+
+## Experiment 5: Adversarial Telemetry, Execution Paths, Detection Validation, and Monitoring Overhead (Phase I)
+
+### Objective
+Empirically evaluate ContainerGuard across diverse Linux execution pathways, adversarial boundary conditions (pathname truncation, comm truncation, anonymous memfd `AT_EMPTY_PATH`, PID recycling, cgroup migration), detection accuracy against a benign developer corpus vs attack simulations, and runtime performance overhead compared to an unmonitored baseline.
+
+### 1. Execution Path and Adversarial Telemetry Results (`scripts/execution_path_test.sh`)
+* **Tracepoints Attached:** 5 kernel hooks (`sys_enter_execve`, `sys_enter_execveat`, `sched_process_exec`, `sys_exit_execve`, `sys_exit_execveat`).
+* **In-Flight Tracking:** LRU hash map (`active_exec_attempts`) + per-CPU scratchpad (`attempt_scratch`).
+* **Total Events Captured:** 72
+* **Conservation Invariant:** 72 hooks = 72 submissions + 0 drops ($100.00\%$ delivery rate).
+* **Execution Paths Verified:**
+  - Standard `execve` (/bin/true): PASS
+  - Direct syscall `syscall(SYS_execve)`: PASS
+  - Relative `execveat`: PASS
+  - Anonymous `memfd` via `AT_EMPTY_PATH`: PASS
+  - Shebang interpreter (`#!/bin/sh`): PASS
+  - Symlink traversal: PASS
+  - Static ELF binary: PASS
+  - Setuid binary: PASS
+  - Containerized execution: PASS
+  - Cgroup migration: PASS (`cgroup_migrated: true`, lineage preserved under single node with `CgroupHistory: [1421]`)
+* **Adversarial Boundary Invariants:**
+  - Path truncation (> 256 bytes): PASS (`path_truncated: true`, null-terminated safely)
+  - Comm truncation (15+ chars): PASS (`comm_truncated: true`)
+  - Failed attempt (ENOENT): PASS (`failed: true`, `exit_code: -2`)
+  - Failed attempt (EACCES): PASS (`failed: true`, `exit_code: -13`)
+
+### 2. Detection Engine Validation Results (`scripts/detection_benchmark.sh`)
+* **Total Workload Events Evaluated:** 133
+* **Benign Developer Events:** 121 (Git lifecycle, multi-stage GCC compilation, routine diagnostics)
+* **Attack Simulation Events:** 12
+* **Rule CG-RULE-001 (Breakout Utilities):** TP=4, FP=0, TN=129, FN=0 | Precision=100%, Recall=100%, FPR=0.00%
+* **Rule CG-RULE-002 (Writable Mount Execution):** TP=3, FP=0, TN=130, FN=0 | Precision=100%, Recall=100%, FPR=0.00%
+* **Rule CG-RULE-003 (Container Interactive Shell):** TP=5, FP=0, TN=128, FN=0 | Precision=100%, Recall=100%, FPR=0.00%
+* **Overall Detection Specificity:** 100.00% across all benign developer workflows (zero false positives).
+
+### 3. Monitoring Overhead Evaluation Results (`scripts/overhead_benchmark.sh`)
+* **Benchmark Workload:** 2,000 rapid executions across 4 concurrent worker streams (500 each).
+* **Baseline (Unmonitored) Time:** 0.4492s (4,451.91 events/sec).
+* **Monitored (ContainerGuard) Time:** 0.4648s (4,303.08 events/sec).
+* **Execution Time Overhead:** **+3.46%**
+* **Throughput Impact:** **-3.34%**
+* **Marginal Latency per Syscall:** **7.77 microseconds**
+* **Daemon CPU Utilization:** **< 0.1%** (Peak < 0.1%)
+* **Daemon RSS Footprint:** **6.02 MiB**
+* **Telemetry Delivery Rate:** **100.00%** (2,036 hooks observed, 2,036 decoded, 0 drops).

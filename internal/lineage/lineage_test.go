@@ -47,12 +47,12 @@ func TestLineageStructuredKeyPIDReuseAndCrossContainer(t *testing.T) {
 		t.Fatalf("failed to retrieve reused process instance 2: %+v", node2)
 	}
 
-	// Scenario 2: Cross-Container Isolation (cgroup 200 also has TGID 500 at StartTime 1000000)
-	p3Key := telemetry.ProcessKey{CgroupID: 200, TGID: 500, StartTimeNS: 1000000}
+	// Scenario 2: Cross-Container Isolation (cgroup 200 also has TGID 501 at StartTime 1000000)
+	p3Key := telemetry.ProcessKey{CgroupID: 200, TGID: 501, StartTimeNS: 1000000}
 	ev3 := &telemetry.SecurityEvent{
 		Key:         p3Key,
 		CgroupID:    200,
-		TGID:        500,
+		TGID:        501,
 		StartTimeNS: 1000000,
 		Comm:        "other_container_app",
 		Filename:    "/app/worker",
@@ -69,6 +69,79 @@ func TestLineageStructuredKeyPIDReuseAndCrossContainer(t *testing.T) {
 	node1Check, _ := tracker.GetProcess(p1Key)
 	if node1Check.Executable != "/usr/bin/job1" {
 		t.Errorf("cross-container collision corrupted node1: %+v", node1Check)
+	}
+}
+
+func TestLineageCrossCgroupParentage(t *testing.T) {
+	tracker := NewLineageTracker(100, 15*time.Minute)
+
+	// Host Parent: containerd-shim in system cgroup 1
+	hostParentKey := telemetry.ProcessKey{CgroupID: 1, TGID: 1000, StartTimeNS: 50000}
+	tracker.RecordExec(&telemetry.SecurityEvent{
+		Key:         hostParentKey,
+		CgroupID:    1,
+		TGID:        1000,
+		StartTimeNS: 50000,
+		Filename:    "/usr/bin/containerd-shim-runc-v2",
+		CapturedAt:  time.Now(),
+	})
+
+	// Container Child: entrypoint in container cgroup 999, with ParentKey in cgroup 1
+	childKey := telemetry.ProcessKey{CgroupID: 999, TGID: 2000, StartTimeNS: 60000}
+	childNode := tracker.RecordExec(&telemetry.SecurityEvent{
+		Key:            childKey,
+		ParentKey:      hostParentKey, // Parent resides in a different cgroup!
+		CgroupID:       999,
+		ParentCgroupID: 1,
+		TGID:           2000,
+		ParentTGID:     1000,
+		StartTimeNS:    60000,
+		Filename:       "/docker-entrypoint.sh",
+		CapturedAt:     time.Now(),
+	})
+
+	chain := tracker.FormatChain(childNode)
+	if !strings.Contains(chain, "/usr/bin/containerd-shim-runc-v2") ||
+		!strings.Contains(chain, "/docker-entrypoint.sh") {
+		t.Errorf("failed to reconstruct cross-cgroup lineage chain: %s", chain)
+	}
+}
+
+func TestLineageCgroupMigration(t *testing.T) {
+	tracker := NewLineageTracker(100, 15*time.Minute)
+
+	// Process initially runs in cgroup 100
+	initKey := telemetry.ProcessKey{CgroupID: 100, TGID: 4567, StartTimeNS: 77777}
+	ev1 := &telemetry.SecurityEvent{
+		Key:         initKey,
+		CgroupID:    100,
+		TGID:        4567,
+		StartTimeNS: 77777,
+		Filename:    "/bin/stage1",
+		CapturedAt:  time.Now(),
+	}
+	tracker.RecordExec(ev1)
+
+	// Process is migrated to cgroup 200 while running (TGID and StartTimeNS invariant)
+	migratedKey := telemetry.ProcessKey{CgroupID: 200, TGID: 4567, StartTimeNS: 77777}
+	ev2 := &telemetry.SecurityEvent{
+		Key:         migratedKey,
+		CgroupID:    200,
+		TGID:        4567,
+		StartTimeNS: 77777,
+		Filename:    "/bin/stage2",
+		CapturedAt:  time.Now().Add(100 * time.Millisecond),
+	}
+	node := tracker.RecordExec(ev2)
+
+	if !ev2.CgroupMigrated {
+		t.Errorf("expected CgroupMigrated flag to be true on cross-cgroup exec")
+	}
+	if len(node.CgroupHistory) != 1 || node.CgroupHistory[0] != 100 {
+		t.Errorf("expected CgroupHistory [100], got %v", node.CgroupHistory)
+	}
+	if node.Key.CgroupID != 200 {
+		t.Errorf("expected current cgroup 200, got %d", node.Key.CgroupID)
 	}
 }
 

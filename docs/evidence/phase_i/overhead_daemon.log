@@ -1,0 +1,42 @@
+2026/11/08 06:46:45 =================================================================
+2026/11/08 06:46:45  ContainerGuard: Resilient eBPF Runtime Intrusion Detection
+2026/11/08 06:46:45 =================================================================
+2026/11/08 06:46:45 [collector] configured Ring Buffer capacity: 16384 KiB (16777216 bytes)
+2026/11/08 06:46:45 [resolver] inventory reconciled: 2 active containers
+2026/11/08 06:46:45 [resolver] Docker lifecycle event monitor running
+2026/11/08 06:46:45 [collector] attached tracepoint syscalls/sys_enter_execve -> cg_execve_events
+2026/11/08 06:46:45 [collector] attached tracepoint syscalls/sys_enter_execveat -> cg_execveat_events
+2026/11/08 06:46:45 [collector] attached tracepoint sched/sched_process_exec -> cg_sched_process_exec
+2026/11/08 06:46:45 [collector] attached tracepoint syscalls/sys_exit_execve -> cg_execve_exit
+2026/11/08 06:46:45 [collector] attached tracepoint syscalls/sys_exit_execveat -> cg_execveat_exit
+2026/11/08 06:46:45 [collector] eBPF telemetry engine active: /home/ram/ebpf-smoke-test/bpf/execve_events.o (5 tracepoints attached)
+2026/11/08 06:46:45 [containerguard] Telemetry pipeline active. Awaiting container events...
+2026/11/08 06:46:46 [METRICS] {"timestamp":"2026-11-08T06:46:46.741417309Z","kernel_hook_invocations":0,"kernel_ringbuf_reserve_drops":0,"kernel_ringbuf_submitted":0,"kernel_cgroup_map_fails":0,"userspace_records_received":251,"userspace_records_decoded":251,"userspace_decode_failures":0,"attribution_pending_transitions":251,"current_pending_queue_depth":251,"peak_pending_queue_depth":251,"attribution_resolved":0,"attribution_unresolved":0,"attribution_stale_mapping":0,"attribution_host_confirmed":0,"userspace_queue_overflows":0,"sequence_gaps_detected":0,"reordered_events":0,"events_processed":0,"processing_failures":0,"kernel_drop_rate_pct":0,"userspace_loss_count":0}
+2026/11/08 06:46:47 [containerguard] Shutdown signal received, terminating collector...
+2026/11/08 06:46:47 [collector] ring buffer consumer stopped gracefully
+
+=== FINAL TELEMETRY INTEGRITY ACCOUNTING REPORT ===
+{
+  "timestamp": "2026-11-08T06:46:47.158955414Z",
+  "kernel_hook_invocations": 2036,
+  "kernel_ringbuf_reserve_drops": 0,
+  "kernel_ringbuf_submitted": 2036,
+  "kernel_cgroup_map_fails": 0,
+  "userspace_records_received": 2036,
+  "userspace_records_decoded": 2036,
+  "userspace_decode_failures": 0,
+  "attribution_pending_transitions": 2036,
+  "current_pending_queue_depth": 0,
+  "peak_pending_queue_depth": 2036,
+  "attribution_resolved": 0,
+  "attribution_unresolved": 2036,
+  "attribution_stale_mapping": 0,
+  "attribution_host_confirmed": 0,
+  "userspace_queue_overflows": 0,
+  "sequence_gaps_detected": 0,
+  "reordered_events": 0,
+  "events_processed": 2036,
+  "processing_failures": 0,
+  "kernel_drop_rate_pct": 0,
+  "userspace_loss_count": 0
+}

@@ -279,3 +279,42 @@ Deterministic Alerts Preserved      4/4 (100%)          4/4 (100%)          4/4 
 
 
 
+
+### 3. Phase I Technical Audit: Adversarial Telemetry, Execution Paths, Detection Validation, and Overhead Evaluation
+
+```
+===================================================================================================================
+PHASE I EVALUATION SUMMARY (Live Kernel Linux 6.18.33.1 WSL2)
+===================================================================================================================
+TEST SUITE                              OBSERVED HOOKS      SUBMISSIONS     DROPS       DECODED     DELIVERY RATE
+-------------------------------------------------------------------------------------------------------------------
+Execution Paths & Adversarial           72                  72              0           72          100.00%
+Detection Validation (Benign + Attack)  133                 133             0           133         100.00%
+Monitoring Overhead Evaluation          2,036               2,036           0           2,036       100.00%
+===================================================================================================================
+```
+
+#### Phase I Audit Findings:
+1. **Decoupled Process Identity & Cgroup Migration:**
+   - Decoupled immutable `ProcessInstanceKey{TGID, StartTimeNS}` from mutable execution context (`CgroupID`).
+   - Lineage tracker now indexes by immutable instance key, preserving process ancestry across cgroup migrations with previous cgroups recorded in `node.CgroupHistory` and flagged as `cgroup_migrated: true`.
+   - Independent parent cgroup resolution implemented in kernel via BPF CO-RE: `BPF_CORE_READ(parent_leader, cgroups, dfl_cgrp, kn, id)`, fixing cross-cgroup container parentage where parent (`containerd-shim`) resides in host cgroup and child executes in container cgroup.
+2. **Multi-Tracepoint Execution-Path Coverage:**
+   - 5 kernel tracepoints active (`sys_enter_execve`, `sys_enter_execveat`, `sched_process_exec`, `sys_exit_execve`, `sys_exit_execveat`).
+   - Tracked via LRU hash map (`active_exec_attempts`) and per-CPU scratchpad (`attempt_scratch`), eliminating stack pressure and preventing memory leaks.
+   - Verified 14 distinct execution pathways: standard `execve`, direct syscall `syscall(SYS_execve)`, relative `execveat`, anonymous `memfd` via `AT_EMPTY_PATH`, shebang scripts, symlink traversal, static ELF binaries, setuid binaries, and containerized workloads.
+   - Distinguishes execution attempts from committed executions: successful executions finalized on `sched_process_exec` (`CG_FLAG_COMMITTED_EXEC`), failed executions finalized on `sys_exit_execve` (`CG_FLAG_EXEC_FAILED`) with exact failure errno (-2 for ENOENT, -13 for EACCES).
+   - Invariant conservation: $\text{HOOK\_CALLS} = \text{RB\_SUBMITTED} + \text{RB\_RESERVE\_DROPS}$ holds with 100.00% precision.
+3. **Detection Validation Against Benign Developer Corpus:**
+   - Evaluated across 133 events: 121 benign developer events (Git lifecycle, multi-stage GCC compilation, routine diagnostics) vs 12 attack simulations.
+   - `CG-RULE-001` (Breakout Utilities): TP=4, FP=0, TN=129, FN=0 | Precision=100.00%, Recall=100.00%, FPR=0.00%.
+   - `CG-RULE-002` (Writable Mount Execution): TP=3, FP=0, TN=130, FN=0 | Precision=100.00%, Recall=100.00%, FPR=0.00%.
+   - `CG-RULE-003` (Container Interactive Shell): TP=5, FP=0, TN=128, FN=0 | Precision=100.00%, Recall=100.00%, FPR=0.00%.
+   - Zero false positives observed across all developer workloads.
+4. **Monitoring Overhead Benchmarking:**
+   - Workload: 2,000 concurrent executions across 4 worker streams.
+   - Baseline (Unmonitored): 0.4492s (4,451.91 ev/s).
+   - Monitored (ContainerGuard Active): 0.4648s (4,303.08 ev/s).
+   - Execution Time Overhead: **+3.46%** (Marginal latency: **7.77 microseconds** per syscall).
+   - Throughput Impact: **-3.34%**.
+   - Daemon CPU Footprint: **< 0.1%** | Resident Memory (RSS): **6.02 MiB**.
