@@ -141,7 +141,7 @@ flowchart TD
         SEQ["event_sequence (Array Map)"] -->|Atomic Increment| RB
         E1 -.->|Count Hook Invocations| TC["telemetry_counters (Array Map)"]
         SP -.->|Count Submissions / Drops| TC
-        EX -.->|Count Failures / Drops| TC
+        EX -.->|Submit Failed-Exec Event / Count Drop| TC
     end
 
     subgraph UserSpacePipeline ["ContainerGuard Userspace Daemon"]
