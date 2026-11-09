@@ -139,7 +139,7 @@ flowchart TD
         
         SC["Per-CPU Scratchpad"] -.->|Stack Relief| AT
         SEQ["event_sequence (Array Map)"] -->|Atomic Increment| RB
-        TC["telemetry_counters (Array Map)"] -->|Hooks / Drops / Submits| TC
+        TC["telemetry_counters (Array Map)<br/>(Atomic Hooks, Drops & Submits)"]
     end
 
     subgraph UserSpacePipeline ["ContainerGuard Userspace Daemon"]
@@ -196,7 +196,7 @@ sequenceDiagram
         App->>Sched: Binary loaded into memory space
         activate Sched
         Sched->>Map: Lookup attempt by pid_tgid
-        Sched->>Sched: Inspect credentials (cur_task->cred->euid != uid -> Setuid flag)
+        Sched->>Sched: Inspect credentials (euid != uid sets setuid flag)
         Sched->>RB: bpf_ringbuf_reserve(360 bytes)
         alt Ring Buffer Space Available
             Sched->>RB: bpf_ringbuf_submit(event with CG_FLAG_COMMITTED_EXEC)
@@ -208,7 +208,7 @@ sequenceDiagram
         deactivate Sched
         App->>Exit: Return 0
         activate Exit
-        Exit->>Exit: Ret >= 0; Attempt already consumed by Sched
+        Exit->>Exit: Ret >= 0 (attempt already consumed by Sched)
         deactivate Exit
     else Kernel Loader Fails (Failed Execution)
         App->>Exit: Return negative errno (e.g. -ENOENT, -EACCES)
@@ -319,7 +319,7 @@ classDiagram
         +string Comm
         +string Executable
         +time.Time StartTime
-        +uint64[] CgroupHistory
+        +List~uint64~ CgroupHistory
     }
 
     ProcessNode *-- ProcessKey
@@ -417,9 +417,9 @@ flowchart TD
     R2 -->|Path in /tmp, /dev/shm, /var/tmp| A2["Emit HIGH Alert"]
     R3 -->|Path in /bin/sh, bash, ash, zsh| A3["Emit MEDIUM Alert"]
 
-    R1 -->|No match| PASS["Pass"]
-    R2 -->|No match| PASS
-    R3 -->|No match| PASS
+    R1 -->|No match| P1["Pass: Routine Workload"]
+    R2 -->|No match| P2["Pass: Routine Workload"]
+    R3 -->|No match| P3["Pass: Routine Workload"]
 ```
 
 ### Rule Definitions & Severity Matrix

@@ -79,16 +79,25 @@ cleanup() {
         wait "${DAEMON_PID}" 2>/dev/null || true
     fi
     if [[ "${CREATED_SETUID_RUNNER}" == "true" && -f "${SETUID_RUNNER}" ]]; then
-        sudo rm -f "${SETUID_RUNNER}" 2>/dev/null || true
-        CREATED_SETUID_RUNNER="false"
+        if sudo rm -f "${SETUID_RUNNER}" 2>/dev/null; then
+            CREATED_SETUID_RUNNER="false"
+        else
+            echo "Warning: Failed to remove ephemeral setuid runner ${SETUID_RUNNER}; manual cleanup required." >&2
+        fi
     fi
     if [[ "${CREATED_MIG_GRP1}" == "true" && -d "${MIG_GRP1}" ]]; then
-        sudo rmdir "${MIG_GRP1}" 2>/dev/null || true
-        CREATED_MIG_GRP1="false"
+        if sudo rmdir "${MIG_GRP1}" 2>/dev/null; then
+            CREATED_MIG_GRP1="false"
+        else
+            echo "Warning: Failed to remove test cgroup ${MIG_GRP1}; manual cleanup required." >&2
+        fi
     fi
     if [[ "${CREATED_MIG_GRP2}" == "true" && -d "${MIG_GRP2}" ]]; then
-        sudo rmdir "${MIG_GRP2}" 2>/dev/null || true
-        CREATED_MIG_GRP2="false"
+        if sudo rmdir "${MIG_GRP2}" 2>/dev/null; then
+            CREATED_MIG_GRP2="false"
+        else
+            echo "Warning: Failed to remove test cgroup ${MIG_GRP2}; manual cleanup required." >&2
+        fi
     fi
 }
 
@@ -182,14 +191,17 @@ EOF
     dispatch_test "static_elf" /tmp/cg_static_test
 
     echo "  -> Harmless setuid binary execution (unprivileged -> EUID 0 transition)..."
-    # Compile into an isolated ephemeral helper in EVIDENCE_DIR to strictly preserve bin/cg_setuid_test
+    # Mark runner as owned by this run before compilation/setup so cleanup trap handles any partial setup failures
+    CREATED_SETUID_RUNNER="true"
     gcc -O2 "${ROOT_DIR}/cmd/test_exec_paths/setuid_test.c" -o "${SETUID_RUNNER}"
     sudo chown root:root "${SETUID_RUNNER}"
     sudo chmod 4755 "${SETUID_RUNNER}"
-    CREATED_SETUID_RUNNER="true"
     dispatch_test "setuid_transition" "${SETUID_RUNNER}"
-    sudo rm -f "${SETUID_RUNNER}"
-    CREATED_SETUID_RUNNER="false"
+    if sudo rm -f "${SETUID_RUNNER}"; then
+        CREATED_SETUID_RUNNER="false"
+    else
+        echo "Warning: Failed to remove ephemeral setuid runner ${SETUID_RUNNER}; manual cleanup required." >&2
+    fi
 
     # 3. Containerized executions
     echo "[3/6] Dispatching containerized executions..."
@@ -220,8 +232,17 @@ EOF
         exit 1
     fi
 
-    sudo mkdir "${MIG_GRP1}" && CREATED_MIG_GRP1="true"
-    sudo mkdir "${MIG_GRP2}" && CREATED_MIG_GRP2="true"
+    if ! sudo mkdir "${MIG_GRP1}"; then
+        echo "Error: Failed to create test cgroup ${MIG_GRP1}; refusing to continue." >&2
+        exit 1
+    fi
+    CREATED_MIG_GRP1="true"
+
+    if ! sudo mkdir "${MIG_GRP2}"; then
+        echo "Error: Failed to create test cgroup ${MIG_GRP2}; refusing to continue." >&2
+        exit 1
+    fi
+    CREATED_MIG_GRP2="true"
 
     # Run a migration sequence in a subshell, capturing the subshell PID
     bash -c '
@@ -247,10 +268,18 @@ EOF
 
     # Clean up cgroups created by this specific run
     if [[ "${CREATED_MIG_GRP1}" == "true" && -d "${MIG_GRP1}" ]]; then
-        sudo rmdir "${MIG_GRP1}" 2>/dev/null && CREATED_MIG_GRP1="false" || true
+        if sudo rmdir "${MIG_GRP1}" 2>/dev/null; then
+            CREATED_MIG_GRP1="false"
+        else
+            echo "Warning: Failed to remove test cgroup ${MIG_GRP1}; manual cleanup required." >&2
+        fi
     fi
     if [[ "${CREATED_MIG_GRP2}" == "true" && -d "${MIG_GRP2}" ]]; then
-        sudo rmdir "${MIG_GRP2}" 2>/dev/null && CREATED_MIG_GRP2="false" || true
+        if sudo rmdir "${MIG_GRP2}" 2>/dev/null; then
+            CREATED_MIG_GRP2="false"
+        else
+            echo "Warning: Failed to remove test cgroup ${MIG_GRP2}; manual cleanup required." >&2
+        fi
     fi
 
     # Persist all dispatched PIDs into test_pids.json for rigorous verification
