@@ -34,6 +34,13 @@ elif [[ -n "${1:-}" ]]; then
         echo "       All live runs must output to an isolated run directory (e.g. docs/evidence/phase_i/runs/<run_id>)." >&2
         exit 1
     fi
+    if [[ -d "${NORM_TARGET}" ]]; then
+        if [[ "$(ls -A "${NORM_TARGET}" 2>/dev/null)" ]]; then
+            echo "Error: Custom output directory '${1}' already exists and is not empty." >&2
+            echo "       Live runs require a new or empty directory to ensure clean evidence isolation." >&2
+            exit 1
+        fi
+    fi
     EVIDENCE_DIR="${1}"
     mkdir -p "${EVIDENCE_DIR}"
 else
@@ -55,8 +62,14 @@ fi
 
 SETUID_RUNNER="${EVIDENCE_DIR}/cg_setuid_runner"
 DAEMON_PID=""
+CREATED_SETUID_RUNNER="false"
+CREATED_MIG_GRP1="false"
+CREATED_MIG_GRP2="false"
+MIG_GRP1="/sys/fs/cgroup/cg_mig_test_grp1"
+MIG_GRP2="/sys/fs/cgroup/cg_mig_test_grp2"
 
 # Cleanup trap to guarantee privileged runners and daemon are torn down safely (live runs only)
+# Strictly restricts teardown to resources instantiated by this specific run.
 cleanup() {
     if [[ "${ARCHIVE_MODE}" == "true" ]]; then
         return 0
@@ -65,14 +78,17 @@ cleanup() {
         sudo kill -TERM "${DAEMON_PID}" 2>/dev/null || true
         wait "${DAEMON_PID}" 2>/dev/null || true
     fi
-    if [[ -f "${SETUID_RUNNER}" ]]; then
+    if [[ "${CREATED_SETUID_RUNNER}" == "true" && -f "${SETUID_RUNNER}" ]]; then
         sudo rm -f "${SETUID_RUNNER}" 2>/dev/null || true
+        CREATED_SETUID_RUNNER="false"
     fi
-    if [[ -d "/sys/fs/cgroup/cg_mig_test_grp1" ]]; then
-        sudo rmdir "/sys/fs/cgroup/cg_mig_test_grp1" 2>/dev/null || true
+    if [[ "${CREATED_MIG_GRP1}" == "true" && -d "${MIG_GRP1}" ]]; then
+        sudo rmdir "${MIG_GRP1}" 2>/dev/null || true
+        CREATED_MIG_GRP1="false"
     fi
-    if [[ -d "/sys/fs/cgroup/cg_mig_test_grp2" ]]; then
-        sudo rmdir "/sys/fs/cgroup/cg_mig_test_grp2" 2>/dev/null || true
+    if [[ "${CREATED_MIG_GRP2}" == "true" && -d "${MIG_GRP2}" ]]; then
+        sudo rmdir "${MIG_GRP2}" 2>/dev/null || true
+        CREATED_MIG_GRP2="false"
     fi
 }
 
@@ -170,8 +186,10 @@ EOF
     gcc -O2 "${ROOT_DIR}/cmd/test_exec_paths/setuid_test.c" -o "${SETUID_RUNNER}"
     sudo chown root:root "${SETUID_RUNNER}"
     sudo chmod 4755 "${SETUID_RUNNER}"
+    CREATED_SETUID_RUNNER="true"
     dispatch_test "setuid_transition" "${SETUID_RUNNER}"
     sudo rm -f "${SETUID_RUNNER}"
+    CREATED_SETUID_RUNNER="false"
 
     # 3. Containerized executions
     echo "[3/6] Dispatching containerized executions..."
@@ -193,11 +211,17 @@ EOF
 
     # 4. Controlled Cgroup Migration Test
     echo "[4/6] Executing controlled cgroup migration..."
-    MIG_GRP1="/sys/fs/cgroup/cg_mig_test_grp1"
-    MIG_GRP2="/sys/fs/cgroup/cg_mig_test_grp2"
     MIG_PID_FILE="${EVIDENCE_DIR}/cgroup_mig_pid.txt"
 
-    sudo mkdir -p "${MIG_GRP1}" "${MIG_GRP2}"
+    # Pre-flight check: refuse to reuse pre-existing cgroup test directories
+    if [[ -d "${MIG_GRP1}" || -d "${MIG_GRP2}" ]]; then
+        echo "Error: Cgroup test directory already exists (${MIG_GRP1} or ${MIG_GRP2})." >&2
+        echo "       Refusing to reuse or modify pre-existing cgroups. Clean up before testing." >&2
+        exit 1
+    fi
+
+    sudo mkdir "${MIG_GRP1}" && CREATED_MIG_GRP1="true"
+    sudo mkdir "${MIG_GRP2}" && CREATED_MIG_GRP2="true"
 
     # Run a migration sequence in a subshell, capturing the subshell PID
     bash -c '
@@ -221,8 +245,13 @@ EOF
         rm -f "${MIG_PID_FILE}"
     fi
 
-    # Clean up cgroups
-    sudo rmdir "${MIG_GRP1}" "${MIG_GRP2}" || true
+    # Clean up cgroups created by this specific run
+    if [[ "${CREATED_MIG_GRP1}" == "true" && -d "${MIG_GRP1}" ]]; then
+        sudo rmdir "${MIG_GRP1}" 2>/dev/null && CREATED_MIG_GRP1="false" || true
+    fi
+    if [[ "${CREATED_MIG_GRP2}" == "true" && -d "${MIG_GRP2}" ]]; then
+        sudo rmdir "${MIG_GRP2}" 2>/dev/null && CREATED_MIG_GRP2="false" || true
+    fi
 
     # Persist all dispatched PIDs into test_pids.json for rigorous verification
     PID_ARGS=()
@@ -440,8 +469,10 @@ elif archive_mode:
         "cgroup_migration": 984,
     }
     print(f"[*] Reconstructed {len(test_tgids)} test TGIDs from historical event log.")
-    print("    Historical archive evaluation validates 11/14 conditions via reconstructed TGIDs,")
-    print("    1/14 via container-name matching, and 2/14 via event signatures (predated test_pids.json).")
+    print("    Historical archive evaluation validates:")
+    print("    - 11/14 TGID-correlated: 10 reconstructed execution-path TGIDs and the historical cgroup-migration TGID 984")
+    print("    - 1/14 container-name matched (cg-test-a, cg-test-b-event-test)")
+    print("    - 2/14 event-signature based: static ELF and setuid transition (predated test_pids.json)")
 else:
     print(f"\n[!] PID VALIDATION FAILURE: test_pids.json is missing in live run directory {evidence_dir}!")
     sys.exit(1)
@@ -549,9 +580,9 @@ if not archive_mode:
     )
 else:
     # Historical archive evaluation mode:
-    # 11 TGID-correlated: 10 test_exec_paths cases + 1 cgroup migration (TGID 984).
-    # 1 container-name matched: exact container attribution (cg-test-a, cg-test-b-event-test).
-    # 2 event-signature based: static ELF and setuid transition (predated test_pids.json).
+    # 11/14 TGID-correlated: 10 reconstructed execution-path TGIDs and the historical cgroup-migration TGID 984.
+    # 1/14 container-name matched: exact container attribution (cg-test-a, cg-test-b-event-test).
+    # 2/14 event-signature based: static ELF and setuid transition (predated test_pids.json).
     pid_std = dispatched_pids["standard_execve"]
     has_standard_exec = any(
         e.get("tgid") == pid_std
@@ -664,7 +695,7 @@ delivery_rate_pct = (decoded / submitted * 100.0) if submitted > 0 else 0.0
 report = {
     "archive_mode": archive_mode,
     "evaluation_mode": (
-        "historical_archive_fallback (11/14 reconstructed TGIDs, 1/14 container-name matched, 2/14 event signatures)"
+        "historical_archive_fallback (11/14 TGID-correlated: 10 reconstructed execution-path TGIDs and the historical cgroup-migration TGID 984; 1/14 container-name matched; 2/14 event signatures)"
         if archive_mode else
         "live_reproduction (13/13 process-correlated PIDs)"
     ),
@@ -732,7 +763,7 @@ print(f" Zero Drops Invariant:             {'PASS' if drops == 0 else 'FAIL'}")
 print(f" Telemetry Delivery Rate:          {delivery_rate_pct:.2f}%")
 print("-" * 65)
 if archive_mode:
-    print(" Execution Path Coverage (Archive Evaluation: 11 TGID-correlated, 1 Container-name matched, 2 Signature):")
+    print(" Execution Path Coverage (Archive Evaluation: 11 TGID-correlated [10 reconstructed + TGID 984], 1 Container-name matched, 2 Signature):")
 else:
     print(" Execution Path Coverage (Live Reproduction: 13/13 PID-correlated):")
 for k, v in report["execution_path_coverage"].items():
