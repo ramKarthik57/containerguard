@@ -225,15 +225,27 @@ EOF
 
     # 3. Containerized executions
     echo "[3/6] Dispatching containerized executions..."
+    # Ensure Docker daemon is accessible
+    if ! sudo docker info >/dev/null 2>&1; then
+        echo "Error: Docker daemon is not accessible via sudo docker info." >&2
+        echo "       Please start Docker (e.g. sudo service docker start) and ensure containers cg-test-a and cg-test-b-event-test exist." >&2
+        exit 1
+    fi
     # Ensure baseline research containers exist and are in running state
     for c in cg-test-a cg-test-b-event-test; do
         if ! sudo docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
             echo "  -> Initializing missing container ${c}..."
-            sudo docker run -d --name "${c}" busybox:latest sleep 3600
+            if ! sudo docker run -d --name "${c}" busybox:latest sleep 3600; then
+                echo "Error: Failed to initialize required container ${c}." >&2
+                exit 1
+            fi
         fi
         if ! sudo docker ps --format '{{.Names}}' | grep -q "^${c}$"; then
             echo "  -> Starting container ${c}..."
-            sudo docker start "${c}" >/dev/null
+            if ! sudo docker start "${c}" >/dev/null; then
+                echo "Error: Failed to start required container ${c}." >&2
+                exit 1
+            fi
         fi
     done
 
