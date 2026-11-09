@@ -17,6 +17,14 @@ if [[ "${1:-}" == "baseline" || "${1:-}" == "--baseline" ]]; then
 elif [[ "${1:-}" == "--archive-eval" ]]; then
     EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i"
     ARCHIVE_MODE="true"
+    if [[ ! -d "${EVIDENCE_DIR}" ]]; then
+        echo "Error: Baseline evidence directory '${EVIDENCE_DIR}' does not exist." >&2
+        exit 1
+    fi
+    if [[ ! -f "${EVIDENCE_DIR}/exec_paths_events.jsonl" || ! -f "${EVIDENCE_DIR}/exec_paths.log" ]]; then
+        echo "Error: Required baseline evidence files missing from '${EVIDENCE_DIR}'." >&2
+        exit 1
+    fi
 elif [[ -n "${1:-}" ]]; then
     # Prevent live tests from targeting the frozen baseline directory
     NORM_TARGET="$(realpath -m "${1}")"
@@ -27,12 +35,12 @@ elif [[ -n "${1:-}" ]]; then
         exit 1
     fi
     EVIDENCE_DIR="${1}"
+    mkdir -p "${EVIDENCE_DIR}"
 else
     RUN_ID="run_$(date +%Y%m%d_%H%M%S)_$$_${RANDOM}"
     EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i/runs/${RUN_ID}"
+    mkdir -p "${EVIDENCE_DIR}"
 fi
-
-mkdir -p "${EVIDENCE_DIR}"
 
 EVENTS_LOG="${EVIDENCE_DIR}/exec_paths_events.jsonl"
 ALERTS_LOG="${EVIDENCE_DIR}/exec_paths_alerts.jsonl"
@@ -48,8 +56,11 @@ fi
 SETUID_RUNNER="${EVIDENCE_DIR}/cg_setuid_runner"
 DAEMON_PID=""
 
-# Cleanup trap to guarantee privileged runners and daemon are torn down safely
+# Cleanup trap to guarantee privileged runners and daemon are torn down safely (live runs only)
 cleanup() {
+    if [[ "${ARCHIVE_MODE}" == "true" ]]; then
+        return 0
+    fi
     if [[ -n "${DAEMON_PID}" ]] && kill -0 "${DAEMON_PID}" 2>/dev/null; then
         sudo kill -TERM "${DAEMON_PID}" 2>/dev/null || true
         wait "${DAEMON_PID}" 2>/dev/null || true
@@ -64,7 +75,10 @@ cleanup() {
         sudo rmdir "/sys/fs/cgroup/cg_mig_test_grp2" 2>/dev/null || true
     fi
 }
-trap cleanup EXIT INT TERM
+
+if [[ "${ARCHIVE_MODE}" != "true" ]]; then
+    trap cleanup EXIT INT TERM
+fi
 
 echo "================================================================="
 echo " ContainerGuard Phase I: Execution-Path & Adversarial Telemetry"
@@ -426,8 +440,8 @@ elif archive_mode:
         "cgroup_migration": 984,
     }
     print(f"[*] Reconstructed {len(test_tgids)} test TGIDs from historical event log.")
-    print("    Historical archive evaluation validates 12/14 conditions via reconstructed TGIDs")
-    print("    and 2/14 (static ELF and setuid) via event signatures (since baseline predated test_pids.json).")
+    print("    Historical archive evaluation validates 11/14 conditions via reconstructed TGIDs,")
+    print("    1/14 via container-name matching, and 2/14 via event signatures (predated test_pids.json).")
 else:
     print(f"\n[!] PID VALIDATION FAILURE: test_pids.json is missing in live run directory {evidence_dir}!")
     sys.exit(1)
@@ -535,8 +549,9 @@ if not archive_mode:
     )
 else:
     # Historical archive evaluation mode:
-    # Reconstructed TGIDs used for 10 test_exec_paths cases + cgroup migration (12/14 conditions).
-    # Static ELF and setuid transition (2/14 conditions) validated via event signatures (predated test_pids.json).
+    # 11 TGID-correlated: 10 test_exec_paths cases + 1 cgroup migration (TGID 984).
+    # 1 container-name matched: exact container attribution (cg-test-a, cg-test-b-event-test).
+    # 2 event-signature based: static ELF and setuid transition (predated test_pids.json).
     pid_std = dispatched_pids["standard_execve"]
     has_standard_exec = any(
         e.get("tgid") == pid_std
@@ -647,6 +662,12 @@ has_cgroup_migrated = any(
 delivery_rate_pct = (decoded / submitted * 100.0) if submitted > 0 else 0.0
 
 report = {
+    "archive_mode": archive_mode,
+    "evaluation_mode": (
+        "historical_archive_fallback (11/14 reconstructed TGIDs, 1/14 container-name matched, 2/14 event signatures)"
+        if archive_mode else
+        "live_reproduction (13/13 process-correlated PIDs)"
+    ),
     "summary": {
         "total_events_captured": len(events),
         "kernel_hook_calls": hook_calls,
@@ -711,7 +732,7 @@ print(f" Zero Drops Invariant:             {'PASS' if drops == 0 else 'FAIL'}")
 print(f" Telemetry Delivery Rate:          {delivery_rate_pct:.2f}%")
 print("-" * 65)
 if archive_mode:
-    print(" Execution Path Coverage (Archive Evaluation: 12 TGID-correlated, 2 Signature):")
+    print(" Execution Path Coverage (Archive Evaluation: 11 TGID-correlated, 1 Container-name matched, 2 Signature):")
 else:
     print(" Execution Path Coverage (Live Reproduction: 13/13 PID-correlated):")
 for k, v in report["execution_path_coverage"].items():
