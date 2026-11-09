@@ -35,7 +35,11 @@ elif [[ -n "${1:-}" ]]; then
         exit 1
     fi
     if [[ -d "${NORM_TARGET}" ]]; then
-        if [[ "$(ls -A "${NORM_TARGET}" 2>/dev/null)" ]]; then
+        EXISTING_CONTENTS="$(ls -A "${NORM_TARGET}" 2>&1)" || {
+            echo "Error: Cannot inspect existing directory '${1}' (read failure): ${EXISTING_CONTENTS}" >&2
+            exit 1
+        }
+        if [[ -n "${EXISTING_CONTENTS}" ]]; then
             echo "Error: Custom output directory '${1}' already exists and is not empty." >&2
             echo "       Live runs require a new or empty directory to ensure clean evidence isolation." >&2
             exit 1
