@@ -34,23 +34,26 @@ elif [[ -n "${1:-}" ]]; then
         echo "       All live runs must output to an isolated run directory (e.g. docs/evidence/phase_i/runs/<run_id>)." >&2
         exit 1
     fi
-    if [[ -d "${NORM_TARGET}" ]]; then
-        EXISTING_CONTENTS="$(ls -A "${NORM_TARGET}" 2>&1)" || {
-            echo "Error: Cannot inspect existing directory '${1}' (read failure): ${EXISTING_CONTENTS}" >&2
-            exit 1
-        }
-        if [[ -n "${EXISTING_CONTENTS}" ]]; then
-            echo "Error: Custom output directory '${1}' already exists and is not empty." >&2
-            echo "       Live runs require a new or empty directory to ensure clean evidence isolation." >&2
-            exit 1
-        fi
+    if [[ -e "${NORM_TARGET}" ]]; then
+        echo "Error: Custom output directory '${1}' already exists." >&2
+        echo "       Live runs require a new directory path to ensure exclusive creation and clean evidence isolation." >&2
+        exit 1
     fi
-    EVIDENCE_DIR="${1}"
-    mkdir -p "${EVIDENCE_DIR}"
+    mkdir -p "$(dirname "${NORM_TARGET}")"
+    if ! mkdir "${NORM_TARGET}"; then
+        echo "Error: Failed to create custom output directory '${1}' exclusively." >&2
+        exit 1
+    fi
+    EVIDENCE_DIR="${NORM_TARGET}"
 else
+    RUNS_BASE_DIR="${ROOT_DIR}/docs/evidence/phase_i/runs"
+    mkdir -p "${RUNS_BASE_DIR}"
     RUN_ID="run_$(date +%Y%m%d_%H%M%S)_$$_${RANDOM}"
-    EVIDENCE_DIR="${ROOT_DIR}/docs/evidence/phase_i/runs/${RUN_ID}"
-    mkdir -p "${EVIDENCE_DIR}"
+    EVIDENCE_DIR="${RUNS_BASE_DIR}/${RUN_ID}"
+    if ! mkdir "${EVIDENCE_DIR}"; then
+        echo "Error: Failed to create exclusive run directory '${EVIDENCE_DIR}'." >&2
+        exit 1
+    fi
 fi
 
 EVENTS_LOG="${EVIDENCE_DIR}/exec_paths_events.jsonl"
