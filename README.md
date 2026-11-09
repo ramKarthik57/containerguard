@@ -139,7 +139,9 @@ flowchart TD
         
         SC["Per-CPU Scratchpad"] -.->|Stack Relief| AT
         SEQ["event_sequence (Array Map)"] -->|Atomic Increment| RB
-        TC["telemetry_counters (Array Map)<br/>(Atomic Hooks, Drops & Submits)"]
+        E1 -.->|Count Hook Invocations| TC["telemetry_counters (Array Map)"]
+        SP -.->|Count Submissions / Drops| TC
+        EX -.->|Count Failures / Drops| TC
     end
 
     subgraph UserSpacePipeline ["ContainerGuard Userspace Daemon"]
