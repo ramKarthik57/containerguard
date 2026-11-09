@@ -135,16 +135,29 @@ EOF
 
     # 1. Start ContainerGuard daemon
     echo "[1/6] Starting ContainerGuard daemon..."
+    # Ensure sudo credentials are authenticated in foreground before backgrounding daemon
+    if ! sudo -v; then
+        echo "Error: Sudo authentication failed. Live reproduction requires interactive root privileges." >&2
+        exit 1
+    fi
     sudo "${ROOT_DIR}/bin/containerguard" \
         -bpf "${ROOT_DIR}/bpf/execve_events.o" \
         -events-log "${EVENTS_LOG}" \
         -alerts-log "${ALERTS_LOG}" \
         -metrics-interval 1s > "${DAEMON_LOG}" 2>&1 &
     DAEMON_PID=$!
-    echo "[+] ContainerGuard active with PID ${DAEMON_PID}"
 
     # Wait for BPF programs to load and attach
     sleep 1.0
+
+    if ! kill -0 "${DAEMON_PID}" 2>/dev/null; then
+        echo "Error: ContainerGuard daemon failed to start or exited prematurely." >&2
+        if [[ -f "${DAEMON_LOG}" ]]; then
+            cat "${DAEMON_LOG}" >&2
+        fi
+        exit 1
+    fi
+    echo "[+] ContainerGuard active with PID ${DAEMON_PID}"
 
     # 2. Execute diverse execution paths with process-specific PID tracking
     echo "[2/6] Dispatching execution paths..."
