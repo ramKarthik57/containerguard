@@ -13,38 +13,50 @@ ContainerGuard intercepts Linux process execution across 5 kernel tracepoints, c
 
 ```mermaid
 flowchart TD
-    subgraph Syscall_Entry ["Syscall Entry Hooks"]
-        E1["tracepoint: syscalls/sys_enter_execve"]
-        E2["tracepoint: syscalls/sys_enter_execveat"]
+    subgraph Syscall_Entry ["1. Syscall Entry Interception"]
+        direction LR
+        E1["syscalls/sys_enter_execve<br/>(Standard Syscall)"]
+        E2["syscalls/sys_enter_execveat<br/>(Relative & memfd Syscall)"]
     end
 
-    subgraph Kernel_Execution ["Kernel Binary Loader & Execution"]
-        K1["active_exec_attempts (LRU Map)"]
-        K2["search_binary_handler / begin_new_exec"]
+    subgraph Kernel_Tracking ["2. In-Flight State Tracking"]
+        K1["active_exec_attempts<br/>(LRU Map keyed on pid_tgid)"]
+        K2["Kernel Binary Loader<br/>(search_binary_handler)"]
+        K1 -.->|"Attempt Context"| K2
     end
 
-    subgraph Syscall_Commit_Exit ["Syscall Commit & Exit Hooks"]
-        C1["tracepoint: sched/sched_process_exec (Success / Committed)"]
-        C2["tracepoint: syscalls/sys_exit_execve (Failure / ret < 0)"]
-        C3["tracepoint: syscalls/sys_exit_execveat (Failure / ret < 0)"]
+    subgraph Syscall_Outcome ["3. Syscall Commitment & Failure Hooks"]
+        direction LR
+        C1["sched/sched_process_exec<br/>(Committed Execution: ret = 0)"]
+        C2["syscalls/sys_exit_execve<br/>(Failed execve: ret < 0)"]
+        C3["syscalls/sys_exit_execveat<br/>(Failed execveat: ret < 0)"]
     end
 
-    subgraph Ring_Buffer ["BPF Ring Buffer & Userspace"]
-        RB["bpf_ringbuf_submit (exec_event: 360 bytes)"]
-        US["ContainerGuard Ingester & Attribution Pipeline"]
+    subgraph Ring_Buffer ["4. Ring Buffer Transport & Ingestion"]
+        RB["events BPF Ring Buffer<br/>(360-Byte Binary Payload)"]
+        US["ContainerGuard Ingester<br/>& Attribution Pipeline"]
+        RB ==>|"mmap Stream"| US
     end
 
-    E1 -->|Record metadata & dfd=-100| K1
-    E2 -->|Record metadata & dfd/at_flags| K1
-    K1 --> K2
-    K2 -->|Exec Succeeded| C1
-    K2 -->|Exec Failed: ENOENT / EACCES| C2
-    K2 -->|Exec Failed: ENOENT / EACCES| C3
+    E1 -->|"Record metadata: dfd = -100"| K1
+    E2 -->|"Record metadata: dfd & at_flags"| K1
 
-    C1 -->|CG_FLAG_COMMITTED_EXEC, exit_code=0| RB
-    C2 -->|CG_FLAG_EXEC_FAILED, exit_code=ret| RB
-    C3 -->|CG_FLAG_EXEC_FAILED, exit_code=ret| RB
-    RB --> US
+    K2 -->|"Loader Committed"| C1
+    K2 -->|"Loader Failed"| C2
+    K2 -->|"Loader Failed"| C3
+
+    C1 -->|"Flag: COMMITTED_EXEC"| RB
+    C2 -->|"Flag: EXEC_FAILED"| RB
+    C3 -->|"Flag: EXEC_FAILED"| RB
+
+    classDef entry fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    classDef track fill:#1f2937,stroke:#6366f1,stroke-width:2px,color:#f8fafc;
+    classDef exitHook fill:#111827,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    classDef rb fill:#374151,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
+    class E1,E2 entry;
+    class K1,K2 track;
+    class C1,C2,C3 exitHook;
+    class RB,US rb;
 ```
 
 ### 1.1 Invariant Telemetry Guarantee

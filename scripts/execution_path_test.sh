@@ -45,6 +45,7 @@ elif [[ -n "${1:-}" ]]; then
         exit 1
     fi
     EVIDENCE_DIR="${NORM_TARGET}"
+    RUN_ID="$(basename "${EVIDENCE_DIR}")"
 else
     RUNS_BASE_DIR="${ROOT_DIR}/docs/evidence/phase_i/runs"
     mkdir -p "${RUNS_BASE_DIR}"
@@ -61,50 +62,42 @@ ALERTS_LOG="${EVIDENCE_DIR}/exec_paths_alerts.jsonl"
 DAEMON_LOG="${EVIDENCE_DIR}/exec_paths.log"
 REPORT_JSON="${EVIDENCE_DIR}/execution_path_report.json"
 TEST_PIDS_JSON="${EVIDENCE_DIR}/test_pids.json"
+SUPERVISOR_MANIFEST="${EVIDENCE_DIR}/supervisor_manifest.json"
 
-# In live run mode, purge previous artifacts in the run directory. Baseline evidence is never purged.
+# In live run mode, purge any previous artifacts in the run directory.
 if [[ "${ARCHIVE_MODE}" != "true" ]]; then
-    rm -f "${EVENTS_LOG}" "${ALERTS_LOG}" "${DAEMON_LOG}" "${REPORT_JSON}" "${TEST_PIDS_JSON}"
+    rm -f "${EVENTS_LOG}" "${ALERTS_LOG}" "${DAEMON_LOG}" "${REPORT_JSON}" "${TEST_PIDS_JSON}" "${SUPERVISOR_MANIFEST}"
 fi
 
-SETUID_RUNNER="${EVIDENCE_DIR}/cg_setuid_runner"
 DAEMON_PID=""
+SUPERVISOR_JOB_PID=""
 CREATED_SETUID_RUNNER="false"
+SETUID_RUNNER_PATH=""
 CREATED_MIG_GRP1="false"
 CREATED_MIG_GRP2="false"
 MIG_GRP1="/sys/fs/cgroup/cg_mig_test_grp1"
 MIG_GRP2="/sys/fs/cgroup/cg_mig_test_grp2"
 
 # Cleanup trap to guarantee privileged runners and daemon are torn down safely (live runs only)
-# Strictly restricts teardown to resources instantiated by this specific run.
 cleanup() {
     if [[ "${ARCHIVE_MODE}" == "true" ]]; then
         return 0
+    fi
+    if [[ -n "${SUPERVISOR_JOB_PID}" ]] && kill -0 "${SUPERVISOR_JOB_PID}" 2>/dev/null; then
+        kill -TERM "${SUPERVISOR_JOB_PID}" 2>/dev/null || true
+        wait "${SUPERVISOR_JOB_PID}" 2>/dev/null || true
     fi
     if [[ -n "${DAEMON_PID}" ]] && kill -0 "${DAEMON_PID}" 2>/dev/null; then
         sudo kill -TERM "${DAEMON_PID}" 2>/dev/null || true
         wait "${DAEMON_PID}" 2>/dev/null || true
     fi
-    if [[ "${CREATED_SETUID_RUNNER}" == "true" && -f "${SETUID_RUNNER}" ]]; then
-        if sudo rm -f "${SETUID_RUNNER}" 2>/dev/null; then
-            CREATED_SETUID_RUNNER="false"
-        else
-            echo "Warning: Failed to remove ephemeral setuid runner ${SETUID_RUNNER}; manual cleanup required." >&2
-        fi
-    fi
     if [[ "${CREATED_MIG_GRP1}" == "true" && -d "${MIG_GRP1}" ]]; then
-        if sudo rmdir "${MIG_GRP1}" 2>/dev/null; then
-            CREATED_MIG_GRP1="false"
-        else
-            echo "Warning: Failed to remove test cgroup ${MIG_GRP1}; manual cleanup required." >&2
-        fi
+        sudo rmdir "${MIG_GRP1}" 2>/dev/null || true
+        CREATED_MIG_GRP1="false"
     fi
     if [[ "${CREATED_MIG_GRP2}" == "true" && -d "${MIG_GRP2}" ]]; then
-        if sudo rmdir "${MIG_GRP2}" 2>/dev/null; then
-            CREATED_MIG_GRP2="false"
-        else
-            echo "Warning: Failed to remove test cgroup ${MIG_GRP2}; manual cleanup required." >&2
-        fi
+        sudo rmdir "${MIG_GRP2}" 2>/dev/null || true
+        CREATED_MIG_GRP2="false"
     fi
 }
 
@@ -118,119 +111,25 @@ echo " Target Evidence Directory: ${EVIDENCE_DIR}"
 echo " Archive Mode: ${ARCHIVE_MODE}"
 echo "================================================================="
 
-if [[ "${1:-}" != "--archive-eval" ]]; then
-    # Compile test harness if not present
-    if [[ ! -f "${ROOT_DIR}/bin/test_exec_paths" ]]; then
-        echo "[*] Compiling test_exec_paths test harness..."
-        gcc -O2 "${ROOT_DIR}/cmd/test_exec_paths/main.c" -o "${ROOT_DIR}/bin/test_exec_paths"
-    fi
+if [[ "${ARCHIVE_MODE}" != "true" ]]; then
+    # -------------------------------------------------------------
+    # 1. Pre-flight Checks & Staging
+    # -------------------------------------------------------------
+    echo "[1/6] Running pre-flight checks and preparing isolated test harness..."
 
-    if [[ ! -f "/tmp/cg_static_test" ]]; then
-        echo "[*] Compiling static ELF binary..."
-        gcc -static -O2 -x c - -o /tmp/cg_static_test << 'EOF'
-#include <stdio.h>
-int main() { printf("static binary executed\n"); return 0; }
-EOF
-    fi
-
-    # 1. Start ContainerGuard daemon
-    echo "[1/6] Starting ContainerGuard daemon..."
     # Ensure sudo credentials are authenticated in foreground before backgrounding daemon
     if ! sudo -v; then
         echo "Error: Sudo authentication failed. Live reproduction requires interactive root privileges." >&2
         exit 1
     fi
-    sudo "${ROOT_DIR}/bin/containerguard" \
-        -bpf "${ROOT_DIR}/bpf/execve_events.o" \
-        -events-log "${EVENTS_LOG}" \
-        -alerts-log "${ALERTS_LOG}" \
-        -metrics-interval 1s > "${DAEMON_LOG}" 2>&1 &
-    DAEMON_PID=$!
 
-    # Wait for BPF programs to load and attach
-    sleep 1.0
-
-    if ! kill -0 "${DAEMON_PID}" 2>/dev/null; then
-        echo "Error: ContainerGuard daemon failed to start or exited prematurely." >&2
-        if [[ -f "${DAEMON_LOG}" ]]; then
-            cat "${DAEMON_LOG}" >&2
-        fi
-        exit 1
-    fi
-    echo "[+] ContainerGuard active with PID ${DAEMON_PID}"
-
-    # 2. Execute diverse execution paths with process-specific PID tracking
-    echo "[2/6] Dispatching execution paths..."
-
-    # Dictionary mapping mode to dispatched PID
-    # Note: test_exec_paths <mode> executes execve in-place without forking,
-    # so the spawned PID exactly matches the TGID recorded by the kernel tracepoint.
-    declare -A PIDS
-
-    dispatch_test() {
-        local mode="$1"
-        local bin="$2"
-        shift 2
-        "${bin}" "$@" &
-        local p=$!
-        PIDS["${mode}"]="${p}"
-        wait "${p}" || true
-    }
-
-    echo "  -> Standard execve..."
-    dispatch_test "standard_execve" "${ROOT_DIR}/bin/test_exec_paths" standard_execve
-
-    echo "  -> Direct syscall (SYS_execve)..."
-    dispatch_test "direct_syscall" "${ROOT_DIR}/bin/test_exec_paths" direct_syscall
-
-    echo "  -> execveat with relative dirfd..."
-    dispatch_test "execveat_relative" "${ROOT_DIR}/bin/test_exec_paths" execveat_relative
-
-    echo "  -> execveat with memfd & AT_EMPTY_PATH..."
-    dispatch_test "execveat_memfd" "${ROOT_DIR}/bin/test_exec_paths" execveat_memfd
-
-    echo "  -> Shebang script (#/bin/sh)..."
-    dispatch_test "shebang" "${ROOT_DIR}/bin/test_exec_paths" shebang
-
-    echo "  -> Symlink execution..."
-    dispatch_test "symlink" "${ROOT_DIR}/bin/test_exec_paths" symlink
-
-    echo "  -> Failed exec attempt (ENOENT - file not found)..."
-    dispatch_test "fail_enoent" "${ROOT_DIR}/bin/test_exec_paths" fail_enoent
-
-    echo "  -> Failed exec attempt (EACCES - permission denied)..."
-    dispatch_test "fail_eacces" "${ROOT_DIR}/bin/test_exec_paths" fail_eacces
-
-    echo "  -> Pathname truncation (> 256 bytes)..."
-    dispatch_test "path_truncation" "${ROOT_DIR}/bin/test_exec_paths" path_truncation
-
-    echo "  -> Comm truncation (16 chars)..."
-    dispatch_test "comm_truncation" "${ROOT_DIR}/bin/test_exec_paths" comm_truncation
-
-    echo "  -> Static ELF execution..."
-    dispatch_test "static_elf" /tmp/cg_static_test
-
-    echo "  -> Harmless setuid binary execution (unprivileged -> EUID 0 transition)..."
-    # Mark runner as owned by this run before compilation/setup so cleanup trap handles any partial setup failures
-    CREATED_SETUID_RUNNER="true"
-    gcc -O2 "${ROOT_DIR}/cmd/test_exec_paths/setuid_test.c" -o "${SETUID_RUNNER}"
-    sudo chown root:root "${SETUID_RUNNER}"
-    sudo chmod 4755 "${SETUID_RUNNER}"
-    dispatch_test "setuid_transition" "${SETUID_RUNNER}"
-    if sudo rm -f "${SETUID_RUNNER}"; then
-        CREATED_SETUID_RUNNER="false"
-    else
-        echo "Warning: Failed to remove ephemeral setuid runner ${SETUID_RUNNER}; manual cleanup required." >&2
-    fi
-
-    # 3. Containerized executions
-    echo "[3/6] Dispatching containerized executions..."
     # Ensure Docker daemon is accessible
     if ! sudo docker info >/dev/null 2>&1; then
         echo "Error: Docker daemon is not accessible via sudo docker info." >&2
         echo "       Please start Docker (e.g. sudo service docker start) and ensure containers cg-test-a and cg-test-b-event-test exist." >&2
         exit 1
     fi
+
     # Ensure baseline research containers exist and are in running state
     for c in cg-test-a cg-test-b-event-test; do
         if ! sudo docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
@@ -248,14 +147,6 @@ EOF
             fi
         fi
     done
-
-    sudo docker exec cg-test-a /bin/date
-    sudo docker exec cg-test-a /bin/echo "container A live workload"
-    sudo docker exec cg-test-b-event-test /bin/uname -a
-
-    # 4. Controlled Cgroup Migration Test
-    echo "[4/6] Executing controlled cgroup migration..."
-    MIG_PID_FILE="${EVIDENCE_DIR}/cgroup_mig_pid.txt"
 
     # Pre-flight check: refuse to reuse pre-existing cgroup test directories
     if [[ -d "${MIG_GRP1}" || -d "${MIG_GRP2}" ]]; then
@@ -276,77 +167,365 @@ EOF
     fi
     CREATED_MIG_GRP2="true"
 
-    # Run a migration sequence in a subshell, capturing the subshell PID
-    bash -c '
-        MIG_P1="/sys/fs/cgroup/cg_mig_test_grp1"
-        MIG_P2="/sys/fs/cgroup/cg_mig_test_grp2"
-        SUB_PID=$$
-        echo $SUB_PID > "'"${MIG_PID_FILE}"'"
+    # Capture cgroup directory inode numbers for definitive telemetry correlation
+    CG1_INODE=$(stat -c '%i' "${MIG_GRP1}")
+    CG2_INODE=$(stat -c '%i' "${MIG_GRP2}")
+    echo "  [cgroup] CG1 created: ${MIG_GRP1} (inode: ${CG1_INODE})"
+    echo "  [cgroup] CG2 created: ${MIG_GRP2} (inode: ${CG2_INODE})"
 
-        echo $SUB_PID | sudo tee "${MIG_P1}/cgroup.procs" > /dev/null
-        /bin/true # Execution 1 in cgroup 1
+    # Create isolated directory structure for this run
+    BUILD_DIR="${EVIDENCE_DIR}/build"
+    TARGETS_DIR="${EVIDENCE_DIR}/targets"
+    REL_DIR="${EVIDENCE_DIR}/rel_dir"
+    SOURCES_DIR="${EVIDENCE_DIR}/harness_sources"
+    mkdir -p "${BUILD_DIR}" "${TARGETS_DIR}" "${REL_DIR}" "${SOURCES_DIR}"
 
-        echo $SUB_PID | sudo tee "${MIG_P2}/cgroup.procs" > /dev/null
-        /bin/true # Execution 2 in cgroup 2 (migrated!)
-    ' || true
+    # -------------------------------------------------------------
+    # 2. Compile Test Supervisor and Unique Workload Binaries
+    # -------------------------------------------------------------
+    echo "[2/6] Compiling supervisor and scenario target binaries into ${EVIDENCE_DIR}..."
 
-    if [[ -f "${MIG_PID_FILE}" ]]; then
-        MIG_PID=$(tr -d '[:space:]' < "${MIG_PID_FILE}")
-        if [[ -n "${MIG_PID}" ]]; then
-            PIDS["cgroup_migration"]="${MIG_PID}"
-        fi
-        rm -f "${MIG_PID_FILE}"
+    SUPERVISOR_SRC="${ROOT_DIR}/cmd/test_supervisor/supervisor.c"
+    MIG_P1_SRC="${ROOT_DIR}/cmd/test_supervisor/mig_phase1.c"
+    MIG_P2_SRC="${ROOT_DIR}/cmd/test_supervisor/mig_phase2.c"
+    TARGET_TEMPLATE_SRC="${ROOT_DIR}/cmd/test_supervisor/target_template.c"
+    SETUID_SRC="${ROOT_DIR}/cmd/test_exec_paths/setuid_test.c"
+
+    # Preserve exact harness source code inside evidence directory for independent verification
+    cp "${SUPERVISOR_SRC}" "${SOURCES_DIR}/"
+    cp "${MIG_P1_SRC}" "${SOURCES_DIR}/"
+    cp "${MIG_P2_SRC}" "${SOURCES_DIR}/"
+    cp "${TARGET_TEMPLATE_SRC}" "${SOURCES_DIR}/"
+    cp "${SETUID_SRC}" "${SOURCES_DIR}/"
+    cp "${BASH_SOURCE[0]}" "${SOURCES_DIR}/execution_path_test.sh"
+
+    # Record compiler version and commands in compiler manifest
+    GCC_VERSION=$(gcc --version | head -n 1)
+    cat << EOF > "${EVIDENCE_DIR}/compiler_manifest.json"
+{
+  "compiler": "${GCC_VERSION}",
+  "commands": {
+    "supervisor": "gcc -O2 cmd/test_supervisor/supervisor.c -o build/supervisor",
+    "mig_phase1": "gcc -O2 cmd/test_supervisor/mig_phase1.c -o targets/mig_phase1_${RUN_ID}",
+    "mig_phase2": "gcc -O2 cmd/test_supervisor/mig_phase2.c -o targets/mig_phase2_${RUN_ID}",
+    "target_std_execve": "gcc -O2 cmd/test_supervisor/target_template.c -o targets/target_std_execve",
+    "target_direct_syscall": "gcc -O2 cmd/test_supervisor/target_template.c -o targets/target_direct_syscall",
+    "relative_execveat": "gcc -O2 cmd/test_supervisor/target_template.c -o rel_dir/relative_execveat_${RUN_ID}",
+    "comm_short": "gcc -O2 cmd/test_supervisor/target_template.c -o targets/comm_short",
+    "static_elf": "gcc -static -O2 cmd/test_supervisor/target_template.c -o targets/static_elf_${RUN_ID}",
+    "setuid_runner": "gcc -O2 cmd/test_exec_paths/setuid_test.c -o targets/setuid_runner_${RUN_ID}"
+  }
+}
+EOF
+
+    gcc -O2 "${SUPERVISOR_SRC}" -o "${BUILD_DIR}/supervisor"
+    gcc -O2 "${MIG_P1_SRC}" -o "${TARGETS_DIR}/mig_phase1_${RUN_ID}"
+    gcc -O2 "${MIG_P2_SRC}" -o "${TARGETS_DIR}/mig_phase2_${RUN_ID}"
+    gcc -O2 "${TARGET_TEMPLATE_SRC}" -o "${TARGETS_DIR}/target_std_execve"
+    gcc -O2 "${TARGET_TEMPLATE_SRC}" -o "${TARGETS_DIR}/target_direct_syscall"
+    gcc -O2 "${TARGET_TEMPLATE_SRC}" -o "${REL_DIR}/relative_execveat_${RUN_ID}"
+
+    # Isolated comm truncation target: short basename ("comm_short", 10 chars <= 15 chars)
+    # This guarantees the telemetry comm_truncated flag is triggered solely by pre-exec PR_SET_NAME.
+    gcc -O2 "${TARGET_TEMPLATE_SRC}" -o "${TARGETS_DIR}/comm_short"
+
+    # Static ELF compilation and verification (no PT_INTERP, no DT_NEEDED)
+    STATIC_BIN="${TARGETS_DIR}/static_elf_${RUN_ID}"
+    gcc -static -O2 "${TARGET_TEMPLATE_SRC}" -o "${STATIC_BIN}"
+    if readelf -l "${STATIC_BIN}" | grep -q "INTERP"; then
+        echo "Error: static_elf binary contains PT_INTERP dynamic interpreter header!" >&2
+        exit 1
     fi
-
-    # Clean up cgroups created by this specific run
-    if [[ "${CREATED_MIG_GRP1}" == "true" && -d "${MIG_GRP1}" ]]; then
-        if sudo rmdir "${MIG_GRP1}" 2>/dev/null; then
-            CREATED_MIG_GRP1="false"
-        else
-            echo "Warning: Failed to remove test cgroup ${MIG_GRP1}; manual cleanup required." >&2
-        fi
+    if readelf -d "${STATIC_BIN}" 2>/dev/null | grep -q "NEEDED"; then
+        echo "Error: static_elf binary contains DT_NEEDED dynamic dependency tag!" >&2
+        exit 1
     fi
-    if [[ "${CREATED_MIG_GRP2}" == "true" && -d "${MIG_GRP2}" ]]; then
-        if sudo rmdir "${MIG_GRP2}" 2>/dev/null; then
-            CREATED_MIG_GRP2="false"
-        else
-            echo "Warning: Failed to remove test cgroup ${MIG_GRP2}; manual cleanup required." >&2
-        fi
-    fi
+    STATIC_ELF_SHA256=$(sha256sum "${STATIC_BIN}" | awk '{print $1}')
+    echo "${STATIC_ELF_SHA256}  ${STATIC_BIN}" > "${TARGETS_DIR}/static_elf_${RUN_ID}.sha256"
+    echo "  -> Verified static ELF (SHA256: ${STATIC_ELF_SHA256})"
 
-    # Persist all dispatched PIDs into test_pids.json for rigorous verification
-    PID_ARGS=()
-    for k in "${!PIDS[@]}"; do
-        PID_ARGS+=("${k}=${PIDS[$k]}")
-        echo "  [PID] ${k} -> ${PIDS[$k]}"
+    # Setuid runner compilation and privileged permission configuration
+    SETUID_RUNNER_PATH="${TARGETS_DIR}/setuid_runner_${RUN_ID}"
+    gcc -O2 "${SETUID_SRC}" -o "${SETUID_RUNNER_PATH}"
+    sudo chown root:root "${SETUID_RUNNER_PATH}"
+    sudo chmod 4755 "${SETUID_RUNNER_PATH}"
+    CREATED_SETUID_RUNNER="true"
+
+    # Record launch-time metadata for setuid executable (mode, ownership, mount options, NoNewPrivs)
+    SETUID_LAUNCH_STAT="${TARGETS_DIR}/setuid_launch_stat.json"
+    MOUNT_OPTS=$(findmnt -n -o OPTIONS -T "${SETUID_RUNNER_PATH}" 2>/dev/null || echo "unknown")
+    NO_NEW_PRIVS=$(grep -i "NoNewPrivs" /proc/self/status 2>/dev/null | awk '{print $2}' || echo "0")
+    cat << EOF > "${SETUID_LAUNCH_STAT}"
+{
+  "target_path": "${SETUID_RUNNER_PATH}",
+  "launch_stat_mode": "$(stat -c '%a' "${SETUID_RUNNER_PATH}")",
+  "launch_stat_uid": $(stat -c '%u' "${SETUID_RUNNER_PATH}"),
+  "launch_stat_gid": $(stat -c '%g' "${SETUID_RUNNER_PATH}"),
+  "mount_options": "${MOUNT_OPTS}",
+  "nosuid_mount": $(if [[ "${MOUNT_OPTS}" == *"nosuid"* ]]; then echo "true"; else echo "false"; fi),
+  "process_no_new_privs": ${NO_NEW_PRIVS},
+  "suid_transition_permitted": true
+}
+EOF
+    echo "  -> Staged setuid runner and captured launch-time metadata"
+
+    # Shebang script
+    SHEBANG_PATH="${TARGETS_DIR}/shebang_${RUN_ID}.sh"
+    cat << 'EOF' > "${SHEBANG_PATH}"
+#!/bin/sh
+exit 0
+EOF
+    chmod +x "${SHEBANG_PATH}"
+
+    # Symlink target (portable relative symlink)
+    (cd "${TARGETS_DIR}" && ln -sf target_std_execve "symlink_${RUN_ID}")
+    echo "  -> Staged relative symlink -> target_std_execve"
+
+    # EACCES target (permission 0644)
+    EACCES_PATH="${TARGETS_DIR}/no_exec_${RUN_ID}.bin"
+    touch "${EACCES_PATH}"
+    chmod 0644 "${EACCES_PATH}"
+
+    # ENOENT target (ensure absent)
+    ENOENT_PATH="${TARGETS_DIR}/nonexistent_${RUN_ID}_xyz"
+    rm -f "${ENOENT_PATH}"
+
+    # Pathname truncation target: deeply nested directory path > 256 bytes with RUN_ID in first 200B
+    PAD_BASE="${EVIDENCE_DIR}/pad_${RUN_ID}"
+    PAD_DIR="${PAD_BASE}/d1_$(printf 'a%.0s' {1..50})/d2_$(printf 'b%.0s' {1..50})/d3_$(printf 'c%.0s' {1..50})"
+    mkdir -p "${PAD_DIR}"
+    cp "${TARGETS_DIR}/target_std_execve" "${PAD_DIR}/target_trunc"
+    chmod +x "${PAD_DIR}/target_trunc"
+    echo "${PAD_DIR}/target_trunc" > "${TARGETS_DIR}/path_trunc_marker.txt"
+    LONG_PATH_LEN=$(echo -n "${PAD_DIR}/target_trunc" | wc -c)
+    echo "  -> Staged pathname truncation target (Length: ${LONG_PATH_LEN} bytes)"
+
+    # Record frozen SUT manifest and checksums in evidence directory
+    cat << EOF > "${EVIDENCE_DIR}/frozen_sut_manifest.json"
+{
+  "repository": "https://github.com/ramKarthik57/containerguard",
+  "base_branch": "master",
+  "current_branch": "test/supervisor-and-migration-redesign",
+  "milestone_tag": "milestone-50-percent-verified",
+  "milestone_commit": "b8f70f5f614a8927278ea031ff9c338791c40f01",
+  "frozen_artifacts": {
+    "bin/containerguard": {
+      "path": "bin/containerguard",
+      "sha256": "cfee0d9675b653fdd7cda2629454a4839b1fd59ede0ba43f8bcd7ce7bebc93d0",
+      "verified_match": $(if [[ "$(sha256sum "${ROOT_DIR}/bin/containerguard" | awk '{print $1}')" == "cfee0d9675b653fdd7cda2629454a4839b1fd59ede0ba43f8bcd7ce7bebc93d0" ]]; then echo "true"; else echo "false"; fi)
+    },
+    "bpf/execve_events.o": {
+      "path": "bpf/execve_events.o",
+      "sha256": "6ae519a012694f11c9ab514c1b13cafb4b8551fb8deadaf10dee817862717ef3",
+      "verified_match": $(if [[ "$(sha256sum "${ROOT_DIR}/bpf/execve_events.o" | awk '{print $1}')" == "6ae519a012694f11c9ab514c1b13cafb4b8551fb8deadaf10dee817862717ef3" ]]; then echo "true"; else echo "false"; fi)
+    },
+    "bin/test_exec_paths": {
+      "path": "bin/test_exec_paths",
+      "sha256": "37890b6bbc638c6066609afbd2cc98cfcb3ca70cd996385a44e4728f1459a32f",
+      "verified_match": $(if [[ "$(sha256sum "${ROOT_DIR}/bin/test_exec_paths" | awk '{print $1}')" == "37890b6bbc638c6066609afbd2cc98cfcb3ca70cd996385a44e4728f1459a32f" ]]; then echo "true"; else echo "false"; fi)
+    },
+    "bin/cg_setuid_test": {
+      "path": "bin/cg_setuid_test",
+      "sha256": "b11b8709bfa3e4038ecfe7705500c9733be248e168af7991ae6e170c01596a95",
+      "verified_match": $(if [[ "$(sha256sum "${ROOT_DIR}/bin/cg_setuid_test" | awk '{print $1}')" == "b11b8709bfa3e4038ecfe7705500c9733be248e168af7991ae6e170c01596a95" ]]; then echo "true"; else echo "false"; fi)
+    }
+  }
+}
+EOF
+
+    # Pre-create FIFOs for runner-supervisor synchronization
+    RELEASE_FIFO="${EVIDENCE_DIR}/supervisor_release.fifo"
+    CMD_FIFO="${EVIDENCE_DIR}/mig_cmd.fifo"
+    RESP_FIFO="${EVIDENCE_DIR}/mig_resp.fifo"
+    rm -f "${RELEASE_FIFO}" "${CMD_FIFO}" "${RESP_FIFO}"
+    mkfifo "${RELEASE_FIFO}" "${CMD_FIFO}" "${RESP_FIFO}"
+
+    # -------------------------------------------------------------
+    # 3. Start ContainerGuard Daemon
+    # -------------------------------------------------------------
+    echo "[3/6] Starting ContainerGuard daemon..."
+    sudo "${ROOT_DIR}/bin/containerguard" \
+        -bpf "${ROOT_DIR}/bpf/execve_events.o" \
+        -events-log "${EVENTS_LOG}" \
+        -alerts-log "${ALERTS_LOG}" \
+        -metrics-interval 1s > "${DAEMON_LOG}" 2>&1 &
+    DAEMON_PID=$!
+
+    # Wait for BPF programs to load and attach
+    sleep 1.0
+
+    if ! kill -0 "${DAEMON_PID}" 2>/dev/null; then
+        echo "Error: ContainerGuard daemon failed to start or exited prematurely." >&2
+        if [[ -f "${DAEMON_LOG}" ]]; then
+            cat "${DAEMON_LOG}" >&2
+        fi
+        exit 1
+    fi
+    echo "[+] ContainerGuard active with PID ${DAEMON_PID}"
+
+    # -------------------------------------------------------------
+    # 4. Dispatch Supervisor & Manage Cgroup Migration Handshake
+    # -------------------------------------------------------------
+    echo "[4/6] Launching test supervisor and executing workloads..."
+
+    # Launch supervisor in background
+    "${BUILD_DIR}/supervisor" "${EVIDENCE_DIR}" "${RUN_ID}" > "${EVIDENCE_DIR}/supervisor.log" 2>&1 &
+    SUPERVISOR_JOB_PID=$!
+
+    # Discover supervisor execution event in telemetry to establish Anchor G
+    ANCHOR_G=""
+    echo "  -> Waiting for supervisor execution event to establish Anchor G..."
+    for i in {1..50}; do
+        if [[ -f "${EVENTS_LOG}" ]]; then
+            ANCHOR_G=$(python3 -c '
+import json, sys
+events_log = sys.argv[1]
+with open(events_log) as f:
+    for line in f:
+        try:
+            e = json.loads(line)
+            fn = e.get("filename", "")
+            if fn.endswith("/supervisor") or fn == "supervisor":
+                print(e.get("tgid"))
+                sys.exit(0)
+        except Exception:
+            pass
+sys.exit(1)
+' "${EVENTS_LOG}" 2>/dev/null || true)
+            if [[ -n "${ANCHOR_G}" ]]; then
+                break
+            fi
+        fi
+        sleep 0.1
     done
 
-    python3 -c '
-import sys, json
-path = sys.argv[1]
-data = {}
-for arg in sys.argv[2:]:
-    if "=" in arg:
-        k, v = arg.split("=", 1)
-        data[k] = int(v)
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-' "${TEST_PIDS_JSON}" "${PID_ARGS[@]}"
+    if [[ -z "${ANCHOR_G}" ]]; then
+        echo "Error: Failed to discover supervisor execution event in telemetry within 5 seconds!" >&2
+        exit 1
+    fi
+    echo "[+] Established supervisor Anchor TGID G = ${ANCHOR_G}"
+
+    # Release supervisor to dispatch scenarios
+    echo "GO" > "${RELEASE_FIFO}"
+
+    # Service cgroup migration handshakes from supervisor
+    echo "  -> Servicing cgroup migration handshake protocol..."
+
+    # Command 1: PLACE_CG1 <child_pid>
+    CMD1=""
+    CHILD_PID1=""
+    if ! read -t 15 -r CMD1 CHILD_PID1 < "${CMD_FIFO}"; then
+        echo "Error: Timeout waiting for PLACE_CG1 command from supervisor!" >&2
+        exit 1
+    fi
+    if [[ "${CMD1}" != "PLACE_CG1" || -z "${CHILD_PID1}" ]]; then
+        echo "Error: Expected PLACE_CG1 <pid>, got '${CMD1} ${CHILD_PID1}'" >&2
+        exit 1
+    fi
+    echo "  [cgroup] Placing fork-only child ${CHILD_PID1} into CG1 (inode: ${CG1_INODE})..."
+    echo "${CHILD_PID1}" | sudo tee "${MIG_GRP1}/cgroup.procs" > /dev/null
+    if ! sudo grep -q "^${CHILD_PID1}$" "${MIG_GRP1}/cgroup.procs"; then
+        echo "Error: Verification failed for child ${CHILD_PID1} in ${MIG_GRP1}/cgroup.procs" >&2
+        exit 1
+    fi
+    echo "OK" > "${RESP_FIFO}"
+
+    # Command 2: MIGRATE_CG2 <child_pid>
+    CMD2=""
+    CHILD_PID2=""
+    if ! read -t 15 -r CMD2 CHILD_PID2 < "${CMD_FIFO}"; then
+        echo "Error: Timeout waiting for MIGRATE_CG2 command from supervisor!" >&2
+        exit 1
+    fi
+    if [[ "${CMD2}" != "MIGRATE_CG2" || -z "${CHILD_PID2}" ]]; then
+        echo "Error: Expected MIGRATE_CG2 <pid>, got '${CMD2} ${CHILD_PID2}'" >&2
+        exit 1
+    fi
+
+    # Barrier A: Verify mig_phase1 event is fully processed and committed to JSONL
+    echo "  [barrier] Barrier A: Waiting for mig_phase1 event in telemetry..."
+    PHASE1_FOUND="false"
+    for i in {1..50}; do
+        if grep -q "mig_phase1" "${EVENTS_LOG}" 2>/dev/null; then
+            PHASE1_FOUND="true"
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ "${PHASE1_FOUND}" != "true" ]]; then
+        echo "Error: Barrier A failure: mig_phase1 event not found in ${EVENTS_LOG}!" >&2
+        exit 1
+    fi
+    echo "  [barrier] Barrier A satisfied: Phase 1 telemetry committed."
+
+    # Migrate child to CG2 and verify
+    echo "  [cgroup] Migrating child ${CHILD_PID2} into CG2 (inode: ${CG2_INODE})..."
+    echo "${CHILD_PID2}" | sudo tee "${MIG_GRP2}/cgroup.procs" > /dev/null
+    if ! sudo grep -q "^${CHILD_PID2}$" "${MIG_GRP2}/cgroup.procs"; then
+        echo "Error: Verification failed for child ${CHILD_PID2} in ${MIG_GRP2}/cgroup.procs" >&2
+        exit 1
+    fi
+
+    # Save detailed cgroup migration audit record
+    cat << EOF > "${EVIDENCE_DIR}/cgroup_migration_audit.json"
+{
+  "cg1_path": "${MIG_GRP1}",
+  "cg1_inode": ${CG1_INODE},
+  "cg1_child_userspace_pid": ${CHILD_PID1},
+  "cg1_placement_verified": true,
+  "cg2_path": "${MIG_GRP2}",
+  "cg2_inode": ${CG2_INODE},
+  "cg2_child_userspace_pid": ${CHILD_PID2},
+  "cg2_placement_verified": true,
+  "migration_handshake_successful": true
+}
+EOF
+    echo "OK" > "${RESP_FIFO}"
+
+    # Wait for supervisor process to complete all scenarios
+    echo "  -> Waiting for supervisor to complete remaining workloads..."
+    if ! wait "${SUPERVISOR_JOB_PID}"; then
+        echo "Error: Supervisor process exited with non-zero status!" >&2
+        exit 1
+    fi
+    SUPERVISOR_JOB_PID=""
+    echo "[+] Supervisor finished all scenarios successfully."
+
+    # -------------------------------------------------------------
+    # 5. Dispatch Containerized Executions & Teardown Daemon
+    # -------------------------------------------------------------
+    echo "[5/6] Dispatching containerized executions..."
+    sudo docker exec cg-test-a /bin/date
+    sudo docker exec cg-test-a /bin/echo "container A live workload"
+    sudo docker exec cg-test-b-event-test /bin/uname -a
+
+    # Clean up test cgroups created by this specific run
+    if [[ "${CREATED_MIG_GRP1}" == "true" && -d "${MIG_GRP1}" ]]; then
+        sudo rmdir "${MIG_GRP1}" 2>/dev/null || true
+        CREATED_MIG_GRP1="false"
+    fi
+    if [[ "${CREATED_MIG_GRP2}" == "true" && -d "${MIG_GRP2}" ]]; then
+        sudo rmdir "${MIG_GRP2}" 2>/dev/null || true
+        CREATED_MIG_GRP2="false"
+    fi
+
+    # Clean up transient FIFOs so they are not included in evidence tarball
+    rm -f "${RELEASE_FIFO}" "${CMD_FIFO}" "${RESP_FIFO}"
 
     sleep 1.0
 
-    # 5. Stop ContainerGuard daemon
-    echo "[5/6] Shutting down ContainerGuard daemon..."
+    echo "Shutting down ContainerGuard daemon..."
     if [[ -n "${DAEMON_PID}" ]] && kill -0 "${DAEMON_PID}" 2>/dev/null; then
         sudo kill -TERM "${DAEMON_PID}" || true
         wait "${DAEMON_PID}" 2>/dev/null || true
         DAEMON_PID=""
     fi
-
     echo "[+] ContainerGuard stopped gracefully."
 fi
 
-# 6. Evaluate and compile empirical report with process-specific validation
+# -------------------------------------------------------------
+# 6. Evaluate and Compile Empirical Report
+# -------------------------------------------------------------
 echo "[6/6] Compiling Execution Path and Adversarial Telemetry Evaluation..."
 
 python3 - "${EVIDENCE_DIR}" "${ARCHIVE_MODE}" << 'PYEOF'
@@ -361,6 +540,8 @@ events_log = os.path.join(evidence_dir, "exec_paths_events.jsonl")
 daemon_log = os.path.join(evidence_dir, "exec_paths.log")
 report_path = os.path.join(evidence_dir, "execution_path_report.json")
 test_pids_path = os.path.join(evidence_dir, "test_pids.json")
+supervisor_manifest_path = os.path.join(evidence_dir, "supervisor_manifest.json")
+cgroup_audit_path = os.path.join(evidence_dir, "cgroup_migration_audit.json")
 
 events = []
 if os.path.exists(events_log):
@@ -471,41 +652,20 @@ if len(events) != processed:
     print(f"\n[!] LOG FILE INCOMPLETE: Recorded events ({len(events)}) != Processed events ({processed})")
     sys.exit(1)
 
-# Required execution test keys that must be present in live runs
-REQUIRED_PID_KEYS = [
-    "standard_execve",
-    "direct_syscall",
-    "execveat_relative",
-    "execveat_memfd",
-    "shebang",
-    "symlink",
-    "fail_enoent",
-    "fail_eacces",
-    "path_truncation",
-    "comm_truncation",
-    "static_elf",
-    "setuid_transition",
-    "cgroup_migration",
-]
+# Analyze observed execution features
+execveat_count = sum(1 for e in events if e.get("execveat"))
+at_empty_path_count = sum(1 for e in events if e.get("at_empty_path"))
+path_truncated_count = sum(1 for e in events if e.get("path_truncated"))
+comm_truncated_count = sum(1 for e in events if e.get("comm_truncated"))
+failed_count = sum(1 for e in events if e.get("failed"))
+committed_count = sum(1 for e in events if e.get("committed"))
+cgroup_migrated_count = sum(1 for e in events if e.get("cgroup_migrated"))
 
+coverage = {}
 dispatched_pids = {}
-if os.path.exists(test_pids_path):
-    with open(test_pids_path, "r") as f:
-        dispatched_pids = json.load(f)
-    
-    # Strict PID validation: all keys present and positive integers
-    for k in REQUIRED_PID_KEYS:
-        if k not in dispatched_pids:
-            print(f"\n[!] PID VALIDATION FAILURE: test_pids.json is missing required test key: {k}")
-            sys.exit(1)
-        val = dispatched_pids[k]
-        if not isinstance(val, int) or val <= 0:
-            print(f"\n[!] PID VALIDATION FAILURE: Invalid PID for {k}: {val!r} (must be positive integer)")
-            sys.exit(1)
-elif archive_mode:
-    # Historical baseline archive evaluation fallback
-    # Only permitted when explicitly running in archive evaluation mode
-    print("[*] Archive Evaluation Mode: reconstructing test TGIDs from historical event sequence...")
+
+if archive_mode:
+    # Historical archive fallback
     test_tgids = []
     for e in events:
         tg = e.get("tgid")
@@ -514,6 +674,7 @@ elif archive_mode:
     if len(test_tgids) < 10:
         print(f"\n[!] ARCHIVE EVALUATION FAILURE: Found only {len(test_tgids)} test TGIDs (expected at least 10)!")
         sys.exit(1)
+
     dispatched_pids = {
         "standard_execve": test_tgids[0],
         "direct_syscall": test_tgids[1],
@@ -529,236 +690,178 @@ elif archive_mode:
         "setuid_transition": None,
         "cgroup_migration": 984,
     }
-    print(f"[*] Reconstructed {len(test_tgids)} test TGIDs from historical event log.")
-    print("    Historical archive evaluation validates:")
-    print("    - 11/14 TGID-correlated: 10 reconstructed execution-path TGIDs and the historical cgroup-migration TGID 984")
-    print("    - 1/14 container-name matched (cg-test-a, cg-test-b-event-test)")
-    print("    - 2/14 event-signature based: static ELF and setuid transition (predated test_pids.json)")
+
+    coverage["standard_execve"] = any(e.get("tgid") == dispatched_pids["standard_execve"] and e.get("filename") == "/bin/true" and not e.get("execveat") and not e.get("cgroup_migrated") for e in events)
+    coverage["direct_syscall_execve"] = any(e.get("tgid") == dispatched_pids["direct_syscall"] and e.get("filename") == "/bin/true" and not e.get("execveat") and not e.get("cgroup_migrated") for e in events)
+    coverage["execveat_relative"] = any(e.get("tgid") == dispatched_pids["execveat_relative"] and e.get("execveat") and not e.get("at_empty_path") for e in events)
+    coverage["execveat_at_empty_path_memfd"] = any(e.get("tgid") == dispatched_pids["execveat_memfd"] and e.get("execveat") and e.get("at_empty_path") for e in events)
+    coverage["shebang_script"] = any(e.get("tgid") == dispatched_pids["shebang"] and "cg_test_shebang" in e.get("filename", "") for e in events)
+    coverage["symlink_traversal"] = any(e.get("tgid") == dispatched_pids["symlink"] and "cg_test_symlink" in e.get("filename", "") for e in events)
+    coverage["static_elf_binary"] = any("cg_static_test" in e.get("filename", "") for e in events)
+    coverage["setuid_euid_transition"] = any(("cg_setuid_test" in e.get("filename", "") or "cg_setuid_runner" in e.get("filename", "")) and e.get("uid") != e.get("euid") and e.get("setuid_exec") and e.get("euid") == 0 for e in events)
+    coverage["failed_exec_enoent"] = any(e.get("tgid") == dispatched_pids["fail_enoent"] and e.get("failed") and e.get("exit_code") == -2 for e in events)
+    coverage["failed_exec_eacces"] = any(e.get("tgid") == dispatched_pids["fail_eacces"] and e.get("failed") and e.get("exit_code") == -13 for e in events)
+    coverage["pathname_truncation"] = any(e.get("tgid") == dispatched_pids["path_truncation"] and e.get("path_truncated") for e in events)
+    coverage["comm_truncation"] = any(e.get("tgid") == dispatched_pids["comm_truncation"] and e.get("comm_truncated") for e in events)
+    coverage["container_workload_attribution"] = (
+        any(e.get("attribution_state") == "RESOLVED" and e.get("container_name") == "cg-test-a" for e in events) and
+        any(e.get("attribution_state") == "RESOLVED" and e.get("container_name") == "cg-test-b-event-test" for e in events)
+    )
+    coverage["cgroup_migration_tracking"] = any(e.get("tgid") == dispatched_pids["cgroup_migration"] and e.get("cgroup_migrated") for e in events)
 else:
-    print(f"\n[!] PID VALIDATION FAILURE: test_pids.json is missing in live run directory {evidence_dir}!")
-    sys.exit(1)
+    # Live reproduction mode: Supervisor TGID Anchor & Semantic Disambiguation
+    supervisor_event = None
+    for e in events:
+        fn = e.get("filename", "")
+        if fn.endswith("/supervisor") or fn == "supervisor":
+            supervisor_event = e
+            break
 
-# Analyze observed execution features
-execveat_count = sum(1 for e in events if e.get("execveat"))
-at_empty_path_count = sum(1 for e in events if e.get("at_empty_path"))
-path_truncated_count = sum(1 for e in events if e.get("path_truncated"))
-comm_truncated_count = sum(1 for e in events if e.get("comm_truncated"))
-failed_count = sum(1 for e in events if e.get("failed"))
-committed_count = sum(1 for e in events if e.get("committed"))
-cgroup_migrated_count = sum(1 for e in events if e.get("cgroup_migrated"))
+    if not supervisor_event:
+        print("\n[!] SUPERVISOR ANCHOR FAILURE: No supervisor execution event found in telemetry!")
+        sys.exit(1)
 
-# Process-correlated validation assertions across all 14 conditions:
-if not archive_mode:
-    # Live reproduction mode: strict PID-to-TGID correlation enforced across all 13 dispatched PIDs
-    pid_std = dispatched_pids["standard_execve"]
-    has_standard_exec = any(
-        e.get("tgid") == pid_std
-        and e.get("filename") == "/bin/true"
-        and not e.get("execveat")
-        and not e.get("cgroup_migrated")
-        for e in events
-    )
-    pid_direct = dispatched_pids["direct_syscall"]
-    has_direct_syscall = any(
-        e.get("tgid") == pid_direct
-        and e.get("filename") == "/bin/true"
-        and not e.get("execveat")
-        and not e.get("cgroup_migrated")
-        for e in events
-    )
-    pid_rel = dispatched_pids["execveat_relative"]
-    has_execveat_relative = any(
-        e.get("tgid") == pid_rel
-        and e.get("execveat")
-        and not e.get("at_empty_path")
-        for e in events
-    )
-    pid_memfd = dispatched_pids["execveat_memfd"]
-    has_memfd = any(
-        e.get("tgid") == pid_memfd
-        and e.get("execveat")
-        and e.get("at_empty_path")
-        for e in events
-    )
-    pid_shebang = dispatched_pids["shebang"]
-    has_shebang = any(
-        e.get("tgid") == pid_shebang
-        and "cg_test_shebang" in e.get("filename", "")
-        for e in events
-    )
-    pid_sym = dispatched_pids["symlink"]
-    has_symlink = any(
-        e.get("tgid") == pid_sym
-        and "cg_test_symlink" in e.get("filename", "")
-        for e in events
-    )
-    pid_static = dispatched_pids["static_elf"]
-    has_static_elf = any(
-        e.get("tgid") == pid_static
-        and "cg_static_test" in e.get("filename", "")
-        for e in events
-    )
-    pid_enoent = dispatched_pids["fail_enoent"]
-    has_enoent = any(
-        e.get("tgid") == pid_enoent
-        and e.get("failed")
-        and e.get("exit_code") == -2
-        for e in events
-    )
-    pid_eacces = dispatched_pids["fail_eacces"]
-    has_eacces = any(
-        e.get("tgid") == pid_eacces
-        and e.get("failed")
-        and e.get("exit_code") == -13
-        for e in events
-    )
-    pid_path_trunc = dispatched_pids["path_truncation"]
-    has_path_trunc = any(
-        e.get("tgid") == pid_path_trunc
-        and e.get("path_truncated")
-        for e in events
-    )
-    pid_comm_trunc = dispatched_pids["comm_truncation"]
-    has_comm_trunc = any(
-        e.get("tgid") == pid_comm_trunc
-        and e.get("comm_truncated")
-        for e in events
-    )
-    pid_setuid = dispatched_pids["setuid_transition"]
-    has_setuid_transition = any(
-        e.get("tgid") == pid_setuid
-        and ("cg_setuid_test" in e.get("filename", "") or "cg_setuid_runner" in e.get("filename", ""))
-        and e.get("uid") != e.get("euid")
-        and e.get("setuid_exec")
-        and e.get("euid") == 0
-        for e in events
-    )
-    pid_mig = dispatched_pids["cgroup_migration"]
-    has_cgroup_migrated = any(
-        e.get("tgid") == pid_mig
-        and e.get("cgroup_migrated")
-        for e in events
-    )
-else:
-    # Historical archive evaluation mode:
-    # 11/14 TGID-correlated: 10 reconstructed execution-path TGIDs and the historical cgroup-migration TGID 984.
-    # 1/14 container-name matched: exact container attribution (cg-test-a, cg-test-b-event-test).
-    # 2/14 event-signature based: static ELF and setuid transition (predated test_pids.json).
-    pid_std = dispatched_pids["standard_execve"]
-    has_standard_exec = any(
-        e.get("tgid") == pid_std
-        and e.get("filename") == "/bin/true"
-        and not e.get("execveat")
-        and not e.get("cgroup_migrated")
-        for e in events
-    )
-    pid_direct = dispatched_pids["direct_syscall"]
-    has_direct_syscall = any(
-        e.get("tgid") == pid_direct
-        and e.get("filename") == "/bin/true"
-        and not e.get("execveat")
-        and not e.get("cgroup_migrated")
-        for e in events
-    )
-    pid_rel = dispatched_pids["execveat_relative"]
-    has_execveat_relative = any(
-        e.get("tgid") == pid_rel
-        and e.get("execveat")
-        and not e.get("at_empty_path")
-        for e in events
-    )
-    pid_memfd = dispatched_pids["execveat_memfd"]
-    has_memfd = any(
-        e.get("tgid") == pid_memfd
-        and e.get("execveat")
-        and e.get("at_empty_path")
-        for e in events
-    )
-    pid_shebang = dispatched_pids["shebang"]
-    has_shebang = any(
-        e.get("tgid") == pid_shebang
-        and "cg_test_shebang" in e.get("filename", "")
-        for e in events
-    )
-    pid_sym = dispatched_pids["symlink"]
-    has_symlink = any(
-        e.get("tgid") == pid_sym
-        and "cg_test_symlink" in e.get("filename", "")
-        for e in events
-    )
-    has_static_elf = any(
-        "cg_static_test" in e.get("filename", "")
-        for e in events
-    )
-    pid_enoent = dispatched_pids["fail_enoent"]
-    has_enoent = any(
-        e.get("tgid") == pid_enoent
-        and e.get("failed")
-        and e.get("exit_code") == -2
-        for e in events
-    )
-    pid_eacces = dispatched_pids["fail_eacces"]
-    has_eacces = any(
-        e.get("tgid") == pid_eacces
-        and e.get("failed")
-        and e.get("exit_code") == -13
-        for e in events
-    )
-    pid_path_trunc = dispatched_pids["path_truncation"]
-    has_path_trunc = any(
-        e.get("tgid") == pid_path_trunc
-        and e.get("path_truncated")
-        for e in events
-    )
-    pid_comm_trunc = dispatched_pids["comm_truncation"]
-    has_comm_trunc = any(
-        e.get("tgid") == pid_comm_trunc
-        and e.get("comm_truncated")
-        for e in events
-    )
-    has_setuid_transition = any(
-        ("cg_setuid_test" in e.get("filename", "") or "cg_setuid_runner" in e.get("filename", ""))
-        and e.get("uid") != e.get("euid")
-        and e.get("setuid_exec")
-        and e.get("euid") == 0
-        for e in events
-    )
-    pid_mig = dispatched_pids["cgroup_migration"]
-    has_cgroup_migrated = any(
-        e.get("tgid") == pid_mig
-        and e.get("cgroup_migrated")
-        for e in events
-    )
+    G = supervisor_event.get("tgid")
+    print(f"[*] Discovered Supervisor Anchor TGID G = {G}")
 
-# Container attribution: strictly validated against expected research baseline containers
-has_container_a = any(
-    e.get("attribution_state") == "RESOLVED"
-    and e.get("container_name") == "cg-test-a"
-    for e in events
-)
-has_container_b = any(
-    e.get("attribution_state") == "RESOLVED"
-    and e.get("container_name") == "cg-test-b-event-test"
-    for e in events
-)
-has_container_event = has_container_a and has_container_b
+    # Synchronize supervisor_manifest.json with discovered kernel TGID
+    if os.path.exists(supervisor_manifest_path):
+        try:
+            with open(supervisor_manifest_path, "r") as mf:
+                mdata = json.load(mf)
+            mdata["supervisor_kernel_tgid"] = G
+            with open(supervisor_manifest_path, "w") as mf:
+                json.dump(mdata, mf, indent=2)
+        except Exception:
+            pass
 
-# Cgroup migration: strictly validated against the migrated subshell process
-pid_mig = dispatched_pids.get("cgroup_migration")
-has_cgroup_migrated = any(
-    (e.get("tgid") == pid_mig if (pid_mig and pid_mig > 0) else True)
-    and e.get("cgroup_migrated")
-    for e in events
-)
+    # 1. Standard execve
+    std_ev = next((e for e in events if e.get("parent_tgid") == G and "target_std_execve" in e.get("filename", "")), None)
+    coverage["standard_execve"] = bool(std_ev and not std_ev.get("execveat") and not std_ev.get("cgroup_migrated"))
+    if std_ev: dispatched_pids["standard_execve"] = std_ev.get("tgid")
+
+    # 2. Direct syscall (SYS_execve)
+    direct_ev = next((e for e in events if e.get("parent_tgid") == G and "target_direct_syscall" in e.get("filename", "")), None)
+    coverage["direct_syscall_execve"] = bool(direct_ev and not direct_ev.get("execveat") and not direct_ev.get("cgroup_migrated"))
+    if direct_ev: dispatched_pids["direct_syscall"] = direct_ev.get("tgid")
+
+    # 3. Relative execveat
+    rel_ev = next((e for e in events if e.get("parent_tgid") == G and "relative_execveat" in e.get("filename", "")), None)
+    coverage["execveat_relative"] = bool(rel_ev and rel_ev.get("execveat") and not rel_ev.get("at_empty_path"))
+    if rel_ev: dispatched_pids["execveat_relative"] = rel_ev.get("tgid")
+
+    # 4. memfd with AT_EMPTY_PATH
+    memfd_ev = next((e for e in events if e.get("parent_tgid") == G and e.get("execveat") and e.get("at_empty_path")), None)
+    coverage["execveat_at_empty_path_memfd"] = bool(memfd_ev and ("anon_elf" in memfd_ev.get("comm", "") or "anon_elf" in memfd_ev.get("filename", "")))
+    if memfd_ev: dispatched_pids["execveat_memfd"] = memfd_ev.get("tgid")
+
+    # 5. Shebang script
+    shebang_ev = next((e for e in events if e.get("parent_tgid") == G and "shebang" in e.get("filename", "")), None)
+    coverage["shebang_script"] = bool(shebang_ev)
+    if shebang_ev: dispatched_pids["shebang"] = shebang_ev.get("tgid")
+
+    # 6. Symlink traversal
+    sym_ev = next((e for e in events if e.get("parent_tgid") == G and "symlink" in e.get("filename", "")), None)
+    coverage["symlink_traversal"] = bool(sym_ev)
+    if sym_ev: dispatched_pids["symlink"] = sym_ev.get("tgid")
+
+    # 7. Static ELF binary
+    static_ev = next((e for e in events if e.get("parent_tgid") == G and "static_elf" in e.get("filename", "")), None)
+    coverage["static_elf_binary"] = bool(static_ev)
+    if static_ev: dispatched_pids["static_elf"] = static_ev.get("tgid")
+
+    # 8. Failed exec ENOENT
+    enoent_ev = next((e for e in events if e.get("parent_tgid") == G and "nonexistent" in e.get("filename", "")), None)
+    coverage["failed_exec_enoent"] = bool(enoent_ev and enoent_ev.get("failed") and enoent_ev.get("exit_code") == -2)
+    if enoent_ev: dispatched_pids["fail_enoent"] = enoent_ev.get("tgid")
+
+    # 9. Failed exec EACCES
+    eacces_ev = next((e for e in events if e.get("parent_tgid") == G and "no_exec" in e.get("filename", "")), None)
+    coverage["failed_exec_eacces"] = bool(eacces_ev and eacces_ev.get("failed") and eacces_ev.get("exit_code") == -13)
+    if eacces_ev: dispatched_pids["fail_eacces"] = eacces_ev.get("tgid")
+
+    # 10. Pathname truncation (> 256 bytes)
+    path_trunc_ev = next((e for e in events if e.get("parent_tgid") == G and e.get("path_truncated") and ("pad_" in e.get("filename", "") or "target_trunc" in e.get("filename", ""))), None)
+    coverage["pathname_truncation"] = bool(path_trunc_ev)
+    if path_trunc_ev: dispatched_pids["path_truncation"] = path_trunc_ev.get("tgid")
+
+    # 11. Comm truncation (ISOLATED: short basename target "comm_short")
+    # Proves comm_truncated is triggered solely by pre-exec PR_SET_NAME (16B), not executable name.
+    comm_trunc_ev = next((e for e in events if e.get("parent_tgid") == G and "comm_short" in e.get("filename", "") and e.get("comm_truncated")), None)
+    coverage["comm_truncation"] = bool(comm_trunc_ev)
+    if comm_trunc_ev: dispatched_pids["comm_truncation"] = comm_trunc_ev.get("tgid")
+
+    # 12. Setuid EUID transition
+    setuid_ev = next((e for e in events if e.get("parent_tgid") == G and "setuid_runner" in e.get("filename", "")), None)
+    coverage["setuid_euid_transition"] = bool(
+        setuid_ev
+        and setuid_ev.get("setuid_exec")
+        and setuid_ev.get("uid") != setuid_ev.get("euid")
+        and setuid_ev.get("euid") == 0
+    )
+    if setuid_ev: dispatched_pids["setuid_transition"] = setuid_ev.get("tgid")
+
+    # 13. Container workload attribution
+    has_container_a = any(e.get("attribution_state") == "RESOLVED" and e.get("container_name") == "cg-test-a" for e in events)
+    has_container_b = any(e.get("attribution_state") == "RESOLVED" and e.get("container_name") == "cg-test-b-event-test" for e in events)
+    coverage["container_workload_attribution"] = (has_container_a and has_container_b)
+
+    # 14. Cgroup migration (Fork-Only Bootstrap & Dual-Barrier Lineage Validation)
+    mig_p1_ev = next((e for e in events if e.get("parent_tgid") == G and "mig_phase1" in e.get("filename", "")), None)
+    mig_valid = False
+    if mig_p1_ev:
+        mig_tgid = mig_p1_ev.get("tgid")
+        mig_start_time = mig_p1_ev.get("start_time_ns")
+        dispatched_pids["cgroup_migration"] = mig_tgid
+
+        prior_execs = [
+            e for e in events
+            if e.get("tgid") == mig_tgid
+            and e.get("kernel_time_ns", 0) < mig_p1_ev.get("kernel_time_ns", 0)
+        ]
+        p1_is_first = (len(prior_execs) == 0)
+        p1_not_migrated = (mig_p1_ev.get("cgroup_migrated") is False)
+
+        mig_p2_ev = next((
+            e for e in events
+            if e.get("tgid") == mig_tgid
+            and e.get("start_time_ns") == mig_start_time
+            and "mig_phase2" in e.get("filename", "")
+        ), None)
+
+        p2_migrated = bool(
+            mig_p2_ev
+            and mig_p2_ev.get("cgroup_migrated") is True
+            and mig_p2_ev.get("cgroup_id") != mig_p1_ev.get("cgroup_id")
+        )
+
+        mig_valid = (p1_is_first and p1_not_migrated and p2_migrated)
+        if not mig_valid:
+            print(f"[!] MIGRATION LINEAGE VALIDATION DETAILS:")
+            print(f"    - mig_phase1 first exec for TGID: {p1_is_first} (prior execs: {len(prior_execs)})")
+            print(f"    - mig_phase1 cgroup_migrated == false: {p1_not_migrated}")
+            print(f"    - mig_phase2 present: {bool(mig_p2_ev)}")
+            if mig_p2_ev:
+                print(f"    - mig_phase2 cgroup_migrated == true: {mig_p2_ev.get('cgroup_migrated')}")
+                print(f"    - cgroup_id transition: {mig_p1_ev.get('cgroup_id')} -> {mig_p2_ev.get('cgroup_id')}")
+
+    coverage["cgroup_migration_tracking"] = mig_valid
+
+    # Save dispatched_pids with explicit provenance note
+    with open(test_pids_path, "w") as f:
+        json.dump(dispatched_pids, f, indent=2)
 
 delivery_rate_pct = (decoded / submitted * 100.0) if submitted > 0 else 0.0
+
+resolved_count = sum(1 for e in events if e.get("attribution_state") == "RESOLVED")
+unresolved_count = sum(1 for e in events if e.get("attribution_state") == "UNRESOLVED")
 
 report = {
     "archive_mode": archive_mode,
     "evaluation_mode": (
         "historical_archive_fallback (11/14 TGID-correlated: 10 reconstructed execution-path TGIDs and the historical cgroup-migration TGID 984; 1/14 container-name matched; 2/14 event signatures)"
         if archive_mode else
-        "live_reproduction (13/13 process-correlated PIDs)"
+        "live_reproduction_supervisor_anchor (Supervisor TGID G anchor, 12 scenario parentage assertions, isolated comm_short, fork-only dual-barrier migration)"
     ),
     "summary": {
         "total_events_captured": len(events),
@@ -774,24 +877,11 @@ report = {
         "processing_failures": proc_failures,
         "conservation_satisfied": conservation_valid,
         "zero_drops_satisfied": (drops == 0),
-        "delivery_rate_percent": round(delivery_rate_pct, 4)
+        "delivery_rate_percent": round(delivery_rate_pct, 4),
+        "container_attribution_resolved": resolved_count,
+        "host_workload_unresolved": unresolved_count
     },
-    "execution_path_coverage": {
-        "standard_execve": has_standard_exec,
-        "direct_syscall_execve": has_direct_syscall,
-        "execveat_relative": has_execveat_relative,
-        "execveat_at_empty_path_memfd": has_memfd,
-        "shebang_script": has_shebang,
-        "symlink_traversal": has_symlink,
-        "static_elf_binary": has_static_elf,
-        "setuid_euid_transition": has_setuid_transition,
-        "failed_exec_enoent": has_enoent,
-        "failed_exec_eacces": has_eacces,
-        "pathname_truncation": has_path_trunc,
-        "comm_truncation": has_comm_trunc,
-        "container_workload_attribution": has_container_event,
-        "cgroup_migration_tracking": has_cgroup_migrated
-    },
+    "execution_path_coverage": coverage,
     "feature_accounting": {
         "execveat_invocations": execveat_count,
         "at_empty_path_invocations": at_empty_path_count,
@@ -802,7 +892,12 @@ report = {
         "cgroup_migrated_events": cgroup_migrated_count
     },
     "kernel_accounting": accounting,
-    "dispatched_pids": dispatched_pids
+    "dispatched_pids": dispatched_pids,
+    "notes": {
+        "persistence_order_note": "Monotonically increasing sequence numbers (0..N-1) are assigned in eBPF kernel ringbuffer. Minor non-monotonic line order in JSONL occurs due to asynchronous Docker container attribution queue processing in userspace pipeline.",
+        "test_pids_provenance": "test_pids.json records the kernel TGIDs discovered from the telemetry event stream matching each supervisor-dispatched scenario.",
+        "attribution_breakdown": f"{resolved_count} events resolved to Docker containers (cg-test-a, cg-test-b-event-test); {unresolved_count} events are host-side benchmark executions."
+    }
 }
 
 if not archive_mode:
@@ -822,11 +917,12 @@ print(f" Pipeline Processing Failures:     {proc_failures}")
 print(f" Conservation (Hooks = Sub + Drop):{'PASS' if conservation_valid else 'FAIL'}")
 print(f" Zero Drops Invariant:             {'PASS' if drops == 0 else 'FAIL'}")
 print(f" Telemetry Delivery Rate:          {delivery_rate_pct:.2f}%")
+print(f" Attribution Breakdown:            {resolved_count} Container-Resolved / {unresolved_count} Host Workloads")
 print("-" * 65)
 if archive_mode:
     print(" Execution Path Coverage (Archive Evaluation: 11 TGID-correlated [10 reconstructed + TGID 984], 1 Container-name matched, 2 Signature):")
 else:
-    print(" Execution Path Coverage (Live Reproduction: 13/13 PID-correlated):")
+    print(" Execution Path Coverage (Live Reproduction: Supervisor Anchor G + Semantic Telemetry):")
 for k, v in report["execution_path_coverage"].items():
     print(f"   - {k:32s}: {'PASS' if v else 'FAIL'}")
 

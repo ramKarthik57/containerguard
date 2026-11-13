@@ -24,35 +24,44 @@ The ContainerGuard security architecture defines four distinct trust domains:
 
 ```mermaid
 flowchart TD
-    subgraph TD1 ["Trust Domain 1: Untrusted Container Workloads (L1)"]
+    subgraph TD1 ["Trust Domain 1: Untrusted Workloads"]
+        direction TB
         C1["Unprivileged Container Processes"]
         C2["Compromised Privileged Containers"]
         C3["Malicious Entrypoints & Injected Binaries"]
     end
 
-    subgraph TD2 ["Trust Domain 2: Container Runtime & Host User Space (L2)"]
-        DOCK["Docker Engine / containerd-shim"]
-        CGROUP["cgroup v2 Filesystem Hierarchy"]
-        PROC["/proc Filesystem"]
-    end
-
-    subgraph TD3 ["Trust Domain 3: ContainerGuard Control Plane (L3)"]
-        DAEMON["ContainerGuard Daemon (Go)"]
-        LINEAGE["Lineage Tracker & Ingestion Pipeline"]
-        DETECTION["Deterministic Detection Engine"]
-        STORAGE["Local JSONL Storage"]
-    end
-
-    subgraph TD4 ["Trust Domain 4: Trusted Linux Kernel (L4)"]
-        TRACE["Kernel Tracepoint Hooks"]
+    subgraph TD4 ["Trust Domain 4: Trusted Linux Kernel"]
+        direction TB
+        TRACE["Kernel Tracepoint Hooks (5 Hooks)"]
         EBPF["ContainerGuard eBPF Programs (CO-RE)"]
         MAPS["BPF Ring Buffer & Atomic Counters"]
+        TRACE -->|"Context & Arguments"| EBPF
+        EBPF -->|"Submit Events / Drops"| MAPS
     end
 
-    TD1 -->|Syscall Boundary (execve/execveat)| TD4
-    TD4 -->|mmap Boundary (BPF Ring Buffer)| TD3
-    TD2 -->|Docker Unix Socket & cgroup Inodes| TD3
-    TD3 -->|Alerts & Telemetry Stream| STORAGE
+    subgraph TD3 ["Trust Domain 3: Daemon Control Plane"]
+        direction TB
+        DAEMON["ContainerGuard Daemon Core"]
+        LINEAGE["Lineage Tracker & Ingestion Pipeline"]
+        DETECTION["Deterministic Detection Engine"]
+        STORAGE["Local JSONL Persistence"]
+        DAEMON -->|"Ingest Stream"| LINEAGE
+        LINEAGE -->|"Enriched Process Context"| DETECTION
+        DETECTION -->|"Security Alerts"| STORAGE
+        LINEAGE -->|"Telemetry Stream"| STORAGE
+    end
+
+    subgraph TD2 ["Trust Domain 2: Container Runtime & Host"]
+        direction TB
+        DOCK["Docker Engine (/var/run/docker.sock)"]
+        CGROUP["cgroup v2 Hierarchy (/sys/fs/cgroup)"]
+        PROC["/proc Filesystem (Host PIDs)"]
+    end
+
+    TD1 ==>|"Syscall Boundary: execve / execveat"| TRACE
+    MAPS ==>|"mmap Boundary: 360B Binary Stream"| DAEMON
+    TD2 -.->|"Lifecycle Events & Inode Inspection"| DAEMON
 
     classDef td1 fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff;
     classDef td2 fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fff;
