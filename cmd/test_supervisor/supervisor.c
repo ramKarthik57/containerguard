@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
     const char *evidence_dir = argv[1];
     const char *run_id = argv[2];
 
-    printf("[supervisor] Initialized (PID: %d, RUN_ID: %s)\n", getpid(), run_id);
+    printf("[supervisor] Initialized (Userspace PID: %d, RUN_ID: %s)\n", getpid(), run_id);
     fflush(stdout);
 
     // 1. Synchronize with runner release barrier:
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
     snprintf(manifest_path, sizeof(manifest_path), "%s/supervisor_manifest.json", evidence_dir);
     FILE *mfp = fopen(manifest_path, "w");
     if (mfp) {
-        fprintf(mfp, "{\n  \"run_id\": \"%s\",\n  \"supervisor_pid\": %d,\n  \"scenarios\": {\n", run_id, getpid());
+        fprintf(mfp, "{\n  \"run_id\": \"%s\",\n  \"supervisor_userspace_pid\": %d,\n  \"scenarios\": {\n", run_id, getpid());
     }
 
     char target[2048];
@@ -235,10 +235,13 @@ int main(int argc, char *argv[]) {
     }
     wait_child_exit(pid, "path_truncation");
 
-    // --- Scenario 10: Comm truncation (16 chars with PR_SET_NAME) ---
-    snprintf(target, sizeof(target), "%s/targets/comm_trunc_%s", evidence_dir, run_id);
-    write_manifest_entry(mfp, "comm_truncation", target, "comm_truncation_16B_prctl");
-    printf("[supervisor] Dispatching comm_truncation -> %s\n", target);
+    // --- Scenario 10: Comm truncation (ISOLATED: 16 chars with PR_SET_NAME on short basename target) ---
+    // Target basename is "comm_short" (10 chars <= 15 chars).
+    // Pre-exec name is "16_char_comm_xxx" (16 bytes, index 14 non-null).
+    // Proves comm_truncated flag is triggered strictly by PR_SET_NAME, not executable basename.
+    snprintf(target, sizeof(target), "%s/targets/comm_short", evidence_dir);
+    write_manifest_entry(mfp, "comm_truncation", target, "isolated_prctl_16B_short_target");
+    printf("[supervisor] Dispatching comm_truncation (isolated) -> %s\n", target);
     pid = fork();
     if (pid == 0) {
         prctl(PR_SET_NAME, "16_char_comm_xxx", 0, 0, 0);
