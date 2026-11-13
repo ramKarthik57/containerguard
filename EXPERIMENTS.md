@@ -25,10 +25,19 @@ ContainerGuard was subjected to a five-part experimental evaluation designed to 
 
 ```mermaid
 flowchart LR
-    E1["Exp 1: Baseline Attribution<br/>(Phase F)"] --> E2["Exp 2: Telemetry Stress<br/>1k–25k (Phase H)"]
-    E2 --> E3["Exp 3: Buffer Saturation<br/>& Backpressure (Phase H.2)"]
-    E3 --> E4["Exp 4: Execution Paths<br/>& Adversarial (Phase I)"]
-    E4 --> E5["Exp 5: Detection Validation<br/>& Overhead (Phase I)"]
+    E1["<strong>Experiment 1</strong><br/>Multi-Container Attribution<br/><em>(Phase F: Baseline)</em>"]
+    E2["<strong>Experiment 2</strong><br/>Burst Scaling Stress<br/><em>(Phase H: 1k–25k Events)</em>"]
+    E3["<strong>Experiment 3</strong><br/>Buffer Saturation & Backpressure<br/><em>(Phase H.2: Loss Accounting)</em>"]
+    E4["<strong>Experiment 4</strong><br/>Execution Paths & Migration<br/><em>(Phase I: Coverage & Lineage)</em>"]
+    E5["<strong>Experiment 5</strong><br/>Detection Rules & Overhead<br/><em>(Phase I: Runtime Overhead)</em>"]
+
+    E1 ==> E2
+    E2 ==> E3
+    E3 ==> E4
+    E4 ==> E5
+
+    classDef exp fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    class E1,E2,E3,E4,E5 exp;
 ```
 
 ---

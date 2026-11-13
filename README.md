@@ -66,28 +66,35 @@ ContainerGuard addresses these failure modes through an in-kernel eBPF architect
 Deploying security monitoring inside containerized Linux hosts introduces unique technical complexities:
 
 ```mermaid
-flowchart TD
-    subgraph ObservabilityProblems ["Observability Failure Modes in Container Workloads"]
-        P1["PID Recycling Collisions<br/>(Linux PIDs wrap under heavy execution)"]
-        P2["Transient Lifecycle Races<br/>(Short-lived containers exit before /proc pollers attach)"]
-        P3["Cgroup Migrations<br/>(Processes re-parented into sub-cgroups lose ancestry)"]
-        P4["Silent Buffer Saturation<br/>(High-frequency exec loops drop events without counters)"]
-        P5["Execution Camouflage<br/>(execveat with AT_EMPTY_PATH executes from memory)"]
+flowchart LR
+    subgraph ObservabilityProblems ["Observability Failure Modes"]
+        direction TB
+        P1["PID Recycling Collisions<br/><span>Linux PIDs wrap under heavy execution</span>"]
+        P2["Transient Lifecycle Races<br/><span>Short-lived containers exit before pollers attach</span>"]
+        P3["Cgroup Migrations<br/><span>Processes moved between cgroups lose ancestry</span>"]
+        P4["Silent Buffer Saturation<br/><span>High-frequency loops drop events without metrics</span>"]
+        P5["Execution Camouflage<br/><span>execveat with AT_EMPTY_PATH executes from memory</span>"]
     end
 
-    subgraph ContainerGuardDefense ["ContainerGuard Architectural Defense"]
-        D1["ProcessInstanceKey{TGID, StartTimeNS}"]
-        D2["Cgroup v2 Inode Binding + Tombstoning"]
-        D3["CgroupHistory Array + cgroup_migrated Flag"]
-        D4["Atomic Kernel Counters + Loss Conservation Equation"]
-        D5["Multi-Tracepoint Interception (5 kernel hooks)"]
+    subgraph ContainerGuardDefense ["ContainerGuard Architectural Defenses"]
+        direction TB
+        D1["Immutable ProcessInstanceKey<br/><span>Key: (TGID, StartTimeNS)</span>"]
+        D2["Cgroup v2 Inode Binding<br/><span>Tombstone Caching for Dead Containers</span>"]
+        D3["CgroupHistory Array<br/><span>In-Place cgroup_migrated Lineage Flag</span>"]
+        D4["Atomic Kernel Counters<br/><span>Loss Conservation: Hooks = Sub + Drop</span>"]
+        D5["5 Kernel Tracepoint Hooks<br/><span>Interception of Entry, Commit & Exit Errno</span>"]
     end
 
-    P1 ==> D1
-    P2 ==> D2
-    P3 ==> D3
-    P4 ==> D4
-    P5 ==> D5
+    P1 ==>|Decouple Identity| D1
+    P2 ==>|Attribution Buffer| D2
+    P3 ==>|Track Transitions| D3
+    P4 ==>|Loss Accounting| D4
+    P5 ==>|Intercept Entry| D5
+
+    classDef prob fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#f8fafc;
+    classDef defn fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    class P1,P2,P3,P4,P5 prob;
+    class D1,D2,D3,D4,D5 defn;
 ```
 
 1. **PID Recycling:** In container hosts executing thousands of micro-tasks, the operating system recycles bounded integer process identifiers (governed by `/proc/sys/kernel/pid_max` and container namespace boundaries). A naive lineage tracker that keys processes on PID will attribute actions of a newly spawned process to a dead ancestor process.
@@ -130,47 +137,73 @@ ContainerGuard bridges the Linux kernel boundary through an asynchronous, memory
 flowchart TD
     subgraph KernelSpace ["Linux Kernel (eBPF Subsystem)"]
         direction TB
-        E1["sys_enter_execve / sys_enter_execveat"] -->|Record Attempt| AT["active_exec_attempts (LRU Hash Map)"]
-        SP["sched_process_exec"] -->|Commit Execution| RB["events (16 MiB BPF Ring Buffer)"]
-        EX["sys_exit_execve / sys_exit_execveat"] -->|Report Failure with Errno| RB
+        subgraph Tracepoints ["Tracepoint Interception"]
+            E1["sys_enter_execve / sys_enter_execveat<br/><span>Capture Attempt & Arguments</span>"]
+            SP["sched_process_exec<br/><span>Committed Binary Execution</span>"]
+            EX["sys_exit_execve / sys_exit_execveat<br/><span>Execution Failure with Errno</span>"]
+        end
+
+        subgraph InFlightState ["In-Flight State & Metrics"]
+            AT["active_exec_attempts<br/><span>(LRU Hash Map)</span>"]
+            SC["Per-CPU Scratchpad<br/><span>(Stack Relief)</span>"]
+            TC["telemetry_counters<br/><span>(Hooks, Drops, Submissions)</span>"]
+            SEQ["event_sequence<br/><span>(Atomic Monotonic Counter)</span>"]
+        end
+
+        RB["events BPF Ring Buffer<br/><span>(16 MiB Lockless Memory-Mapped Buffer)</span>"]
+
+        SC -.->|Zero-Copy Struct Buffer| AT
+        E1 -->|1. Record In-Flight Attempt| AT
+        AT -.->|2. Retrieve Attempt Context| SP
+        AT -.->|2. Retrieve Attempt Context| EX
         
-        AT -.->|Lookup Attempt| SP
-        AT -.->|Lookup Attempt| EX
-        
-        SC["Per-CPU Scratchpad"] -.->|Stack Relief| AT
-        SEQ["event_sequence (Array Map)"] -->|Atomic Increment| RB
-        E1 -.->|Count Hook Invocations| TC["telemetry_counters (Array Map)"]
+        E1 -.->|Count Invocations| TC
         SP -.->|Count Submissions / Drops| TC
-        EX -.->|Submit Failed-Exec Event / Count Drop| TC
+        EX -.->|Count Submissions / Drops| TC
+
+        SEQ -->|Atomic Increment| RB
+        SP -->|Submit Committed Event (360B)| RB
+        EX -->|Submit Failed Event (360B)| RB
     end
 
     subgraph UserSpacePipeline ["ContainerGuard Userspace Daemon"]
         direction TB
-        RB -->|Raw Binary 360B Stream| CR["Ring Buffer Consumer (internal/collector)"]
-        CR -->|Decode & Verify Sequence| ING["Ingester (internal/pipeline)"]
-        
-        subgraph AttributionEngine ["Attribution Subsystem (internal/container & pipeline)"]
-            ING -->|Raw Event| AB["Attribution Buffer (FIFO Queue + Inode Index)"]
-            DR["Docker Event Stream (/var/run/docker.sock)"] -->|Container Start/Stop/Rename| CRZ["Container Resolver"]
-            CG["Cgroup v2 Inode Inspection (/sys/fs/cgroup)"] -->|Map Inode to CID| CRZ
-            CRZ -->|Mapping Updates| AB
-            AB -->|Attributed SecurityEvent| OUT["Attribution Output Channel"]
+        subgraph IngestionBoundary ["Ingestion & Ring Buffer Consumer"]
+            CR["Ring Buffer Consumer<br/><span>(internal/collector)</span>"]
+            ING["Pipeline Ingester<br/><span>(Sequence Integrity Verification)</span>"]
+            CR -->|360B Binary Event| ING
         end
 
-        subgraph AnalysisEngine ["State & Detection Pipeline (internal/lineage & detection)"]
-            OUT --> LT["Lineage Tracker (Process Tree & History)"]
-            OUT --> DE["Detection Engine (Rules 001, 002, 003)"]
-            LT -.->|Ancestry Chain| DE
-            DE -->|Security Alerts| ST["Storage Manager (JSONL Persistence)"]
-            OUT -->|Enriched Telemetry| ST
+        subgraph AttributionEngine ["Container Attribution Subsystem (internal/container)"]
+            AB["Attribution Buffer<br/><span>(FIFO Queue & Inode Index)</span>"]
+            CRZ["Container Resolver & Tombstone Cache<br/><span>(Map Inode to Container Context)</span>"]
+            DR["Docker Engine Socket<br/><span>(/var/run/docker.sock)</span>"] -->|Lifecycle Events| CRZ
+            CG["cgroup v2 Hierarchy<br/><span>(/sys/fs/cgroup)</span>"] -->|Inode Inspection| CRZ
+            ING -->|Raw Event| AB
+            CRZ -->|Bind Inode Mapping| AB
+        end
+
+        subgraph AnalysisEngine ["Lineage & Detection Engine (internal/lineage & detection)"]
+            LT["Lineage Tracker<br/><span>(Process Tree & Cgroup History)</span>"]
+            DE["Detection Engine<br/><span>(Rules 001, 002, 003)</span>"]
+            AB -->|Attributed SecurityEvent| LT
+            LT -->|Enriched Process Context| DE
+        end
+
+        subgraph PersistenceBoundary ["Persistence & Storage (internal/storage)"]
+            ST["Storage Manager<br/><span>(exec_paths_events.jsonl & exec_paths_alerts.jsonl)</span>"]
+            DE -->|Security Alerts| ST
+            LT -->|Enriched Telemetry| ST
         end
     end
+
+    RB ==>|mmap RingBuf Stream (368B On-Wire Records)| CR
 
     classDef kernel fill:#1f2937,stroke:#3b82f6,stroke-width:2px,color:#fff;
     classDef userspace fill:#111827,stroke:#10b981,stroke-width:2px,color:#fff;
     classDef storage fill:#374151,stroke:#f59e0b,stroke-width:2px,color:#fff;
     class E1,SP,EX,AT,RB,SC,SEQ,TC kernel;
-    class CR,ING,AB,DR,CG,CRZ,OUT,LT,DE userspace;
+    class CR,ING,AB,DR,CG,CRZ,LT,DE userspace;
     class ST storage;
 ```
 
@@ -178,7 +211,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     autonumber
-    participant App as Executing Process
+    actor App as Executing Process
     participant Enter as sys_enter_execve(at)
     participant Map as active_exec_attempts (LRU)
     participant Sched as sched_process_exec
@@ -186,44 +219,36 @@ sequenceDiagram
     participant RB as BPF Ring Buffer
     participant Daemon as ContainerGuard Daemon
 
-    App->>Enter: invoke execve(pathname, argv, envp)
+    App->>Enter: execve(pathname, argv, envp)
     activate Enter
-    Enter->>Enter: Increment CG_METRIC_HOOK_CALLS
-    Enter->>Enter: Extract cgroup v2 inode & parent cgroup inode via BPF CO-RE
-    Enter->>Enter: Copy pathname (up to 256B) & comm into scratchpad
+    Note over Enter: Tracepoint: sys_enter<br/>- CO-RE cgroup v2 inode extraction<br/>- Metric: CG_METRIC_HOOK_CALLS++
     Enter->>Map: Store struct exec_attempt (Key: pid_tgid)
     deactivate Enter
 
-    alt Binary Loader Succeeds (Committed Execution)
-        App->>Sched: Binary loaded into memory space
+    alt Case 1: Binary Loader Committed (Execution Success)
+        App->>Sched: Binary image loaded into memory
         activate Sched
         Sched->>Map: Lookup attempt by pid_tgid
-        Sched->>Sched: Inspect credentials (euid != uid sets setuid flag)
-        Sched->>RB: bpf_ringbuf_reserve(360 bytes)
+        Note over Sched: Credential check: EUID != UID -> Setuid Flag
         alt Ring Buffer Space Available
-            Sched->>RB: bpf_ringbuf_submit(event with CG_FLAG_COMMITTED_EXEC)
-            Sched->>Map: Delete attempt entry (Cleanup)
+            Sched->>RB: bpf_ringbuf_submit(CG_FLAG_COMMITTED_EXEC)
         else Buffer Saturated
-            Sched->>Sched: Increment CG_METRIC_RB_RESERVE_DROPS
-            Sched->>Map: Delete attempt entry
+            Sched->>Sched: CG_METRIC_RB_RESERVE_DROPS++
         end
+        Sched->>Map: Delete attempt entry (Cleanup)
         deactivate Sched
-        App->>Exit: Return 0
-        activate Exit
-        Exit->>Exit: Ret >= 0 (attempt already consumed by Sched)
-        deactivate Exit
-    else Kernel Loader Fails (Failed Execution)
-        App->>Exit: Return negative errno (e.g. -ENOENT, -EACCES)
+        Exit-->>App: Syscall returns 0 (Process runs)
+
+    else Case 2: Kernel Loader Fails (Execution Failure)
+        Exit-->>App: Syscall returns negative errno (-ENOENT, -EACCES)
         activate Exit
         Exit->>Map: Lookup attempt by pid_tgid
-        Exit->>RB: bpf_ringbuf_reserve(360 bytes)
         alt Ring Buffer Space Available
-            Exit->>RB: bpf_ringbuf_submit(event with CG_FLAG_EXEC_FAILED, exit_code)
-            Exit->>Map: Delete attempt entry (Cleanup)
+            Exit->>RB: bpf_ringbuf_submit(CG_FLAG_EXEC_FAILED, errno)
         else Buffer Saturated
-            Exit->>Exit: Increment CG_METRIC_RB_RESERVE_DROPS
-            Exit->>Map: Delete attempt entry
+            Exit->>Exit: CG_METRIC_RB_RESERVE_DROPS++
         end
+        Exit->>Map: Delete attempt entry (Cleanup)
         deactivate Exit
     end
 
@@ -324,8 +349,9 @@ classDiagram
         +List~uint64~ CgroupHistory
     }
 
-    ProcessNode *-- ProcessKey
-    ProcessNode *-- ProcessInstanceKey
+    ProcessKey ..> ProcessInstanceKey : derives
+    ProcessNode *-- ProcessKey : active key
+    ProcessNode *-- ProcessInstanceKey : immutable identity
 ```
 
 ### Lineage Preservation Across Cgroup Migrations
@@ -344,27 +370,33 @@ ContainerGuard resolves container ownership via the Linux **cgroup v2 filesystem
 
 ```mermaid
 stateDiagram-v2
-    [*] --> InodeDiscovered: Kernel emits event with CgroupID
+    [*] --> InodeEvaluation: Ingest event with CgroupID
 
-    state InodeDiscovered {
+    state InodeEvaluation {
         [*] --> CheckHostRoot
-        CheckHostRoot --> ConfirmedHost: CgroupID == HostRootInode
-        CheckHostRoot --> CheckActiveInventory: CgroupID != HostRootInode
-        
-        CheckActiveInventory --> ConfirmedContainer: Inode found in byCgroup map
-        CheckActiveInventory --> CheckTombstones: Inode not in active map
-        
-        CheckTombstones --> StaleContainer: Inode found in staleMappings
-        CheckTombstones --> UnresolvedPending: Inode not recognized
+        CheckHostRoot --> HostIdentity: CgroupID == HostRootInode
+        CheckHostRoot --> CheckInventory: CgroupID != HostRootInode
+
+        CheckInventory --> ContainerIdentity: Match in byCgroup inventory
+        CheckInventory --> CheckTombstones: Miss in active inventory
+
+        CheckTombstones --> ContainerIdentity: Match in staleMappings
+        CheckTombstones --> AttributionBuffer: Unrecognized CgroupID
     }
 
-    UnresolvedPending --> AttributionBuffer: Hold in buffer (TTL: 2s)
-    AttributionBuffer --> ConfirmedContainer: Docker event resolves Inode within TTL
-    AttributionBuffer --> ConfirmedUnresolved: TTL expires without resolution
+    state AttributionBuffer {
+        [*] --> PendingQueue: FIFO buffer (TTL: 2s)
+        PendingQueue --> ContainerIdentity: Docker container start event arrives
+        PendingQueue --> UnresolvedIdentity: TTL expired without resolution
+    }
 
-    ConfirmedContainer --> [*]: AttributionResolved (Container Context Attached)
-    ConfirmedHost --> [*]: AttributionHost (Host Context Attached)
-    ConfirmedUnresolved --> [*]: AttributionUnresolved (Never assumed to be Host!)
+    HostIdentity --> AttributionHost: Attach host execution context
+    ContainerIdentity --> AttributionResolved: Attach container execution context
+    UnresolvedIdentity --> AttributionUnresolved: Tag UNRESOLVED (Never treat as Host!)
+
+    AttributionHost --> [*]
+    AttributionResolved --> [*]
+    AttributionUnresolved --> [*]
 ```
 
 ### Tombstone Caching & Asynchronous Race Handling
@@ -384,19 +416,44 @@ Every kernel hook invocation must be accounted for according to the conservation
 $$\text{Kernel Hook Invocations} = \text{Ring Buffer Submissions} + \text{Kernel Reservation Drops}$$
 
 ```mermaid
-flowchart LR
-    subgraph KernelLossBoundary ["Kernel Loss Accounting"]
-        K1["Kernel Hook"] -->|bpf_ringbuf_reserve| RES{Space?}
-        RES -->|Yes| K2["bpf_ringbuf_submit"]
-        RES -->|No| K3["Increment Reserve Drops"]
+flowchart TD
+    subgraph S1 ["1. Kernel Loss Accounting Boundary"]
+        direction LR
+        K1["Kernel Tracepoint Hook"] -->|bpf_ringbuf_reserve| RES{"Buffer Space?"}
+        RES -->|Space Available| K2["bpf_ringbuf_submit()"]
+        RES -->|Buffer Saturated| K3["Increment CG_METRIC_RB_RESERVE_DROPS"]
     end
 
-    subgraph UserspaceIngestion ["Userspace Ingestion"]
-        K2 -->|RingBufReader| DEC["Binary Decoder (360B)"]
-        DEC -->|Verify seq_num| SEQ["Sequence Tracker"]
-        SEQ -->|Gap Detected?| GAP["Log Sequence Anomaly"]
-        SEQ -->|Continuous| BUF["Attribution Buffer Queue"]
+    subgraph S2 ["2. Userspace Ingestion & Gap Detection"]
+        direction LR
+        K2 ==>|RingBufReader mmap| DEC["Binary Decoder (360B Event)"]
+        DEC -->|Verify Monotonicity| SEQ{"Sequence Continuous?"}
+        SEQ -->|Continuous (Delta = 1)| BUF["Attribution Buffer (FIFO Queue)"]
+        SEQ -->|Delta > 1 (Loss Detected)| GAP["Log Sequence Anomaly"]
     end
+
+    subgraph S3 ["3. Graceful Termination & Loss Accounting Drain"]
+        direction LR
+        BUF ==>|Daemon Shutdown| D1["StopReader: Detach Ring Buffer"]
+        D1 -->|Flush Ingestion Pipeline| D2["Drain Ingester & Attribution Buffer"]
+        D2 -->|Synchronous Map Read| D3["Verify: Hook Calls == Submissions + Drops"]
+    end
+
+    S1 ==> S2
+    S2 ==> S3
+
+    classDef stage fill:#1e293b,stroke:#475569,stroke-width:1px,color:#f8fafc;
+    classDef hook fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef decision fill:#334155,stroke:#f59e0b,stroke-width:2px,color:#fff;
+    classDef drop fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fff;
+    classDef pass fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
+    classDef drain fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#fff;
+
+    class K1,DEC hook;
+    class RES,SEQ decision;
+    class K3,GAP drop;
+    class K2,BUF pass;
+    class D1,D2,D3 drain;
 ```
 
 - **Ring Buffer Reservation Drops:** Occur exclusively inside the kernel when the ring buffer is full (`bpf_ringbuf_reserve()` returns NULL). Recorded by atomic counter `CG_METRIC_RB_RESERVE_DROPS`.
@@ -411,17 +468,51 @@ ContainerGuard executes three deterministic detection rules ([`internal/detectio
 
 ```mermaid
 flowchart TD
-    EV["Ingested SecurityEvent"] --> R1{"CG-RULE-001<br/>Breakout Utility?"}
-    EV --> R2{"CG-RULE-002<br/>Writable Mount Exec?"}
-    EV --> R3{"CG-RULE-003<br/>Container Shell?"}
+    EV["Attributed SecurityEvent"] --> EVAL{"Deterministic Detection Engine"}
 
-    R1 -->|Matches nsenter, unshare, chroot, modprobe| A1["Emit CRITICAL Alert<br/>+ Formatted Lineage Chain"]
-    R2 -->|Path in /tmp, /dev/shm, /var/tmp| A2["Emit HIGH Alert"]
-    R3 -->|Path in /bin/sh, bash, ash, zsh| A3["Emit MEDIUM Alert"]
+    subgraph Rule1 ["Rule 1: Privileged Breakout Utilities"]
+        direction TB
+        R1["CG-RULE-001<br/>Binary match: nsenter, unshare, chroot, modprobe, insmod"]
+        R1 -->|Match inside Container| A1["Emit CRITICAL Alert<br/>Attach Ancestor Lineage Chain"]
+    end
 
-    R1 -->|No match| P1["Pass: Routine Workload"]
-    R2 -->|No match| P2["Pass: Routine Workload"]
-    R3 -->|No match| P3["Pass: Routine Workload"]
+    subgraph Rule2 ["Rule 2: Volatile Mount Execution"]
+        direction TB
+        R2["CG-RULE-002<br/>Path match: /tmp/, /dev/shm/, /var/tmp/"]
+        R2 -->|Match inside Container| A2["Emit HIGH Alert<br/>Untrusted Mount Execution"]
+    end
+
+    subgraph Rule3 ["Rule 3: Interactive Container Shell"]
+        direction TB
+        R3["CG-RULE-003<br/>Path match: /bin/sh, bash, dash, ash, zsh"]
+        R3 -->|Match inside Container| A3["Emit MEDIUM Alert<br/>Container Shell Ingress"]
+    end
+
+    EVAL -->|Evaluate| R1
+    EVAL -->|Evaluate| R2
+    EVAL -->|Evaluate| R3
+
+    A1 --> ALERTS["Security Alerts Sink<br/>(exec_paths_alerts.jsonl)"]
+    A2 --> ALERTS
+    A3 --> ALERTS
+
+    EVAL -->|No Rules Triggered| TELEM["Telemetry Stream Sink<br/>(exec_paths_events.jsonl)"]
+
+    classDef eval fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef rule fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#f8fafc;
+    classDef crit fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fff;
+    classDef high fill:#431407,stroke:#f97316,stroke-width:2px,color:#fff;
+    classDef med fill:#422006,stroke:#eab308,stroke-width:2px,color:#fff;
+    classDef pass fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
+    classDef alertsink fill:#581c87,stroke:#a855f7,stroke-width:2px,color:#fff;
+
+    class EVAL eval;
+    class R1,R2,R3 rule;
+    class A1 crit;
+    class A2 high;
+    class A3 med;
+    class TELEM pass;
+    class ALERTS alertsink;
 ```
 
 ### Rule Definitions & Severity Matrix
