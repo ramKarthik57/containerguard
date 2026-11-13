@@ -15,26 +15,26 @@ ContainerGuard intercepts Linux process execution across 5 kernel tracepoints, c
 flowchart TD
     subgraph Syscall_Entry ["1. Syscall Entry Interception"]
         direction LR
-        E1["syscalls/sys_enter_execve<br/><span>(Standard Syscall)</span>"]
-        E2["syscalls/sys_enter_execveat<br/><span>(Relative & memfd Syscall)</span>"]
+        E1["syscalls/sys_enter_execve<br/>(Standard Syscall)"]
+        E2["syscalls/sys_enter_execveat<br/>(Relative & memfd Syscall)"]
     end
 
     subgraph Kernel_Tracking ["2. In-Flight State Tracking"]
-        K1["active_exec_attempts<br/><span>(LRU Map keyed on pid_tgid)</span>"]
-        K2["Kernel Binary Loader<br/><span>(search_binary_handler)</span>"]
+        K1["active_exec_attempts<br/>(LRU Map keyed on pid_tgid)"]
+        K2["Kernel Binary Loader<br/>(search_binary_handler)"]
         K1 -.->|Attempt Context| K2
     end
 
     subgraph Syscall_Outcome ["3. Syscall Commitment & Failure Hooks"]
         direction LR
-        C1["sched/sched_process_exec<br/><span>(Committed Execution: ret = 0)</span>"]
-        C2["syscalls/sys_exit_execve<br/><span>(Failed execve: ret < 0)</span>"]
-        C3["syscalls/sys_exit_execveat<br/><span>(Failed execveat: ret < 0)</span>"]
+        C1["sched/sched_process_exec<br/>(Committed Execution: ret = 0)"]
+        C2["syscalls/sys_exit_execve<br/>(Failed execve: ret < 0)"]
+        C3["syscalls/sys_exit_execveat<br/>(Failed execveat: ret < 0)"]
     end
 
     subgraph Ring_Buffer ["4. Ring Buffer Transport & Ingestion"]
-        RB["events BPF Ring Buffer<br/><span>(360-Byte Binary Payload)</span>"]
-        US["ContainerGuard Ingester<br/><span>& Attribution Pipeline</span>"]
+        RB["events BPF Ring Buffer<br/>(360-Byte Binary Payload)"]
+        US["ContainerGuard Ingester<br/>& Attribution Pipeline"]
         RB ==>|mmap Stream| US
     end
 

@@ -26,19 +26,19 @@ flowchart TD
     subgraph KernelSpace ["Linux Kernel (eBPF Subsystem)"]
         direction TB
         subgraph Tracepoints ["Tracepoint Interception"]
-            E1["sys_enter_execve / sys_enter_execveat<br/><span>Capture Attempt & Arguments</span>"]
-            SP["sched_process_exec<br/><span>Committed Binary Execution</span>"]
-            EX["sys_exit_execve / sys_exit_execveat<br/><span>Execution Failure with Errno</span>"]
+            E1["sys_enter_execve / sys_enter_execveat<br/>(Capture Attempt & Arguments)"]
+            SP["sched_process_exec<br/>(Committed Binary Execution)"]
+            EX["sys_exit_execve / sys_exit_execveat<br/>(Execution Failure with Errno)"]
         end
 
         subgraph InFlightState ["In-Flight State & Metrics"]
-            AT["active_exec_attempts<br/><span>(LRU Hash Map)</span>"]
-            SC["Per-CPU Scratchpad<br/><span>(Stack Relief)</span>"]
-            TC["telemetry_counters<br/><span>(Hooks, Drops, Submissions)</span>"]
-            SEQ["event_sequence<br/><span>(Atomic Monotonic Counter)</span>"]
+            AT["active_exec_attempts<br/>(LRU Hash Map)"]
+            SC["Per-CPU Scratchpad<br/>(Stack Relief)"]
+            TC["telemetry_counters<br/>(Hooks, Drops, Submissions)"]
+            SEQ["event_sequence<br/>(Atomic Monotonic Counter)"]
         end
 
-        RB["events BPF Ring Buffer<br/><span>(16 MiB Lockless Memory-Mapped Buffer)</span>"]
+        RB["events BPF Ring Buffer<br/>(16 MiB Lockless Memory-Mapped Buffer)"]
 
         SC -.->|Zero-Copy Struct Buffer| AT
         E1 -->|1. Record In-Flight Attempt| AT
@@ -56,30 +56,30 @@ flowchart TD
 
     subgraph UserSpacePipeline ["ContainerGuard Userspace Daemon"]
         direction TB
-        subgraph IngestionBoundary ["Ingestion & Ring Buffer Consumer"]
-            CR["Ring Buffer Consumer<br/><span>(internal/collector)</span>"]
-            ING["Pipeline Ingester<br/><span>(Sequence Integrity Verification)</span>"]
+        subgraph IngestionBoundary ["Ingestion Boundary"]
+            CR["Ring Buffer Consumer<br/>(internal/collector)"]
+            ING["Pipeline Ingester<br/>(Sequence Integrity Verification)"]
             CR -->|360B Binary Event| ING
         end
 
-        subgraph AttributionEngine ["Container Attribution Subsystem (internal/container)"]
-            AB["Attribution Buffer<br/><span>(FIFO Queue & Inode Index)</span>"]
-            CRZ["Container Resolver & Tombstone Cache<br/><span>(Map Inode to Container Context)</span>"]
-            DR["Docker Engine Socket<br/><span>(/var/run/docker.sock)</span>"] -->|Lifecycle Events| CRZ
-            CG["cgroup v2 Hierarchy<br/><span>(/sys/fs/cgroup)</span>"] -->|Inode Inspection| CRZ
+        subgraph AttributionEngine ["Container Attribution Engine"]
+            AB["Attribution Buffer<br/>(FIFO Queue & Inode Index)"]
+            CRZ["Container Resolver & Tombstone Cache<br/>(Map Inode to Container Context)"]
+            DR["Docker Engine Socket<br/>(/var/run/docker.sock)"] -->|Lifecycle Events| CRZ
+            CG["cgroup v2 Hierarchy<br/>(/sys/fs/cgroup)"] -->|Inode Inspection| CRZ
             ING -->|Raw Event| AB
             CRZ -->|Bind Inode Mapping| AB
         end
 
-        subgraph AnalysisEngine ["Lineage & Detection Engine (internal/lineage & detection)"]
-            LT["Lineage Tracker<br/><span>(Process Tree & Cgroup History)</span>"]
-            DE["Detection Engine<br/><span>(Rules 001, 002, 003)</span>"]
+        subgraph AnalysisEngine ["Lineage & Detection Pipeline"]
+            LT["Lineage Tracker<br/>(Process Tree & Cgroup History)"]
+            DE["Detection Engine<br/>(Rules 001, 002, 003)"]
             AB -->|Attributed SecurityEvent| LT
             LT -->|Enriched Process Context| DE
         end
 
-        subgraph PersistenceBoundary ["Persistence & Storage (internal/storage)"]
-            ST["Storage Manager<br/><span>(exec_paths_events.jsonl & exec_paths_alerts.jsonl)</span>"]
+        subgraph PersistenceBoundary ["Persistence Boundary"]
+            ST["Storage Manager<br/>(exec_paths_events.jsonl & exec_paths_alerts.jsonl)"]
             DE -->|Security Alerts| ST
             LT -->|Enriched Telemetry| ST
         end
@@ -120,46 +120,36 @@ sequenceDiagram
     autonumber
     actor App as Executing Process
     participant Enter as sys_enter_execve(at)
-    participant Map as active_exec_attempts (LRU)
-    participant Sched as sched_process_exec
-    participant Exit as sys_exit_execve(at)
-    participant RB as BPF Ring Buffer
-    participant Daemon as ContainerGuard Daemon
+    participant Map as active_attempts (LRU)
+    participant Hook as sched_exec / sys_exit
+    participant Pipeline as Ring Buffer & Daemon
 
     App->>Enter: execve(pathname, argv, envp)
     activate Enter
-    Note over Enter: Tracepoint: sys_enter<br/>- CO-RE cgroup v2 inode extraction<br/>- Metric: CG_METRIC_HOOK_CALLS++
+    Note over Enter: Tracepoint: sys_enter<br/>- CO-RE cgroup v2 inode capture<br/>- Metric: CG_METRIC_HOOK_CALLS++
     Enter->>Map: Store struct exec_attempt (Key: pid_tgid)
     deactivate Enter
 
-    alt Case 1: Binary Loader Committed (Execution Success)
-        App->>Sched: Binary image loaded into memory
-        activate Sched
-        Sched->>Map: Lookup attempt by pid_tgid
-        Note over Sched: Credential check: EUID != UID -> Setuid Flag
-        alt Ring Buffer Space Available
-            Sched->>RB: bpf_ringbuf_submit(CG_FLAG_COMMITTED_EXEC)
-        else Buffer Saturated
-            Sched->>Sched: CG_METRIC_RB_RESERVE_DROPS++
-        end
-        Sched->>Map: Delete attempt entry (Cleanup)
-        deactivate Sched
-        Exit-->>App: Syscall returns 0 (Process runs)
+    alt Case 1: Binary Loader Committed (sched_process_exec)
+        App->>Hook: Binary image loaded into memory
+        activate Hook
+        Hook->>Map: Lookup attempt by pid_tgid
+        Note over Hook: Credential check: EUID != UID -> Setuid Flag
+        Hook->>Pipeline: bpf_ringbuf_submit(CG_FLAG_COMMITTED_EXEC)
+        Hook->>Map: Delete attempt entry (Cleanup)
+        Hook-->>App: Syscall returns 0 (Process executes)
+        deactivate Hook
 
-    else Case 2: Kernel Loader Fails (Execution Failure)
-        Exit-->>App: Syscall returns negative errno (-ENOENT, -EACCES)
-        activate Exit
-        Exit->>Map: Lookup attempt by pid_tgid
-        alt Ring Buffer Space Available
-            Exit->>RB: bpf_ringbuf_submit(CG_FLAG_EXEC_FAILED, errno)
-        else Buffer Saturated
-            Exit->>Exit: CG_METRIC_RB_RESERVE_DROPS++
-        end
-        Exit->>Map: Delete attempt entry (Cleanup)
-        deactivate Exit
+    else Case 2: Kernel Loader Failed (sys_exit_execve)
+        Hook->>Map: Lookup attempt by pid_tgid
+        activate Hook
+        Hook->>Pipeline: bpf_ringbuf_submit(CG_FLAG_EXEC_FAILED, errno)
+        Hook->>Map: Delete attempt entry (Cleanup)
+        Hook-->>App: Syscall returns negative errno (-ENOENT, -EACCES)
+        deactivate Hook
     end
 
-    RB-->>Daemon: Consume 360B binary record via mmap
+    Note over Pipeline: Userspace Daemon consumes 360B records via lockless mmap
 ```
 
 ### 3.3 BPF Memory Architecture & Map Specifications
@@ -218,6 +208,7 @@ ContainerGuard decouples mutable execution context from immutable process instan
 
 ```mermaid
 classDiagram
+    direction TB
     class ProcessInstanceKey {
         +uint32 TGID
         +uint64 StartTimeNS
@@ -246,8 +237,8 @@ classDiagram
     }
 
     ProcessKey ..> ProcessInstanceKey : derives
-    ProcessNode *-- ProcessKey : active key
-    ProcessNode *-- ProcessInstanceKey : immutable identity
+    ProcessNode --> ProcessKey : active key
+    ProcessNode --> ProcessInstanceKey : immutable id
 ```
 
 ### 4.2 Cgroup Migration Handling

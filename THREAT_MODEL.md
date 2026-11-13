@@ -24,14 +24,14 @@ The ContainerGuard security architecture defines four distinct trust domains:
 
 ```mermaid
 flowchart TD
-    subgraph TD1 ["Trust Domain 1: Untrusted Container Workloads (L1)"]
+    subgraph TD1 ["Trust Domain 1: Untrusted Workloads"]
         direction TB
         C1["Unprivileged Container Processes"]
         C2["Compromised Privileged Containers"]
         C3["Malicious Entrypoints & Injected Binaries"]
     end
 
-    subgraph TD4 ["Trust Domain 4: Trusted Linux Kernel (L4)"]
+    subgraph TD4 ["Trust Domain 4: Trusted Linux Kernel"]
         direction TB
         TRACE["Kernel Tracepoint Hooks (5 Hooks)"]
         EBPF["ContainerGuard eBPF Programs (CO-RE)"]
@@ -40,14 +40,7 @@ flowchart TD
         EBPF -->|Submit Events / Drops| MAPS
     end
 
-    subgraph TD2 ["Trust Domain 2: Container Runtime & Host User Space (L2)"]
-        direction TB
-        DOCK["Docker Engine (/var/run/docker.sock)"]
-        CGROUP["cgroup v2 Hierarchy (/sys/fs/cgroup)"]
-        PROC["/proc Filesystem (Host PIDs)"]
-    end
-
-    subgraph TD3 ["Trust Domain 3: ContainerGuard Control Plane (L3)"]
+    subgraph TD3 ["Trust Domain 3: Daemon Control Plane"]
         direction TB
         DAEMON["ContainerGuard Daemon Core"]
         LINEAGE["Lineage Tracker & Ingestion Pipeline"]
@@ -57,6 +50,13 @@ flowchart TD
         LINEAGE -->|Enriched Process Context| DETECTION
         DETECTION -->|Security Alerts| STORAGE
         LINEAGE -->|Telemetry Stream| STORAGE
+    end
+
+    subgraph TD2 ["Trust Domain 2: Container Runtime & Host"]
+        direction TB
+        DOCK["Docker Engine (/var/run/docker.sock)"]
+        CGROUP["cgroup v2 Hierarchy (/sys/fs/cgroup)"]
+        PROC["/proc Filesystem (Host PIDs)"]
     end
 
     TD1 ==>|Syscall Boundary: execve / execveat| TRACE
