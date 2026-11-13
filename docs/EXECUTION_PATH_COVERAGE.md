@@ -22,7 +22,7 @@ flowchart TD
     subgraph Kernel_Tracking ["2. In-Flight State Tracking"]
         K1["active_exec_attempts<br/>(LRU Map keyed on pid_tgid)"]
         K2["Kernel Binary Loader<br/>(search_binary_handler)"]
-        K1 -.->|Attempt Context| K2
+        K1 -.->|"Attempt Context"| K2
     end
 
     subgraph Syscall_Outcome ["3. Syscall Commitment & Failure Hooks"]
@@ -35,19 +35,19 @@ flowchart TD
     subgraph Ring_Buffer ["4. Ring Buffer Transport & Ingestion"]
         RB["events BPF Ring Buffer<br/>(360-Byte Binary Payload)"]
         US["ContainerGuard Ingester<br/>& Attribution Pipeline"]
-        RB ==>|mmap Stream| US
+        RB ==>|"mmap Stream"| US
     end
 
-    E1 -->|Record metadata: dfd = -100| K1
-    E2 -->|Record metadata: dfd & at_flags| K1
+    E1 -->|"Record metadata: dfd = -100"| K1
+    E2 -->|"Record metadata: dfd & at_flags"| K1
 
-    K2 -->|Loader Committed| C1
-    K2 -->|Loader Failed| C2
-    K2 -->|Loader Failed| C3
+    K2 -->|"Loader Committed"| C1
+    K2 -->|"Loader Failed"| C2
+    K2 -->|"Loader Failed"| C3
 
-    C1 -->|Flag: COMMITTED_EXEC| RB
-    C2 -->|Flag: EXEC_FAILED| RB
-    C3 -->|Flag: EXEC_FAILED| RB
+    C1 -->|"Flag: COMMITTED_EXEC"| RB
+    C2 -->|"Flag: EXEC_FAILED"| RB
+    C3 -->|"Flag: EXEC_FAILED"| RB
 
     classDef entry fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
     classDef track fill:#1f2937,stroke:#6366f1,stroke-width:2px,color:#f8fafc;

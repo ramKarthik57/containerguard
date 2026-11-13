@@ -85,11 +85,11 @@ flowchart LR
         D5["5 Kernel Tracepoint Hooks<br/>Entry, Commit & Exit Errno Coverage"]
     end
 
-    P1 ==>|Decouple Identity| D1
-    P2 ==>|Attribution Buffer| D2
-    P3 ==>|Track Transitions| D3
-    P4 ==>|Loss Accounting| D4
-    P5 ==>|Intercept Entry| D5
+    P1 ==>|"Decouple Identity"| D1
+    P2 ==>|"Attribution Buffer"| D2
+    P3 ==>|"Track Transitions"| D3
+    P4 ==>|"Loss Accounting"| D4
+    P5 ==>|"Intercept Entry"| D5
 
     subgraph ClearanceSpacer [" "]
         direction LR
@@ -162,18 +162,18 @@ flowchart TD
 
         RB["events BPF Ring Buffer<br/>(16 MiB Lockless Memory-Mapped Buffer)"]
 
-        SC -.->|Zero-Copy Struct Buffer| AT
-        E1 -->|1. Record In-Flight Attempt| AT
-        AT -.->|2. Retrieve Attempt Context| SP
-        AT -.->|2. Retrieve Attempt Context| EX
+        SC -.->|"Zero-Copy Struct Buffer"| AT
+        E1 -->|"1. Record In-Flight Attempt"| AT
+        AT -.->|"2. Retrieve Attempt Context"| SP
+        AT -.->|"2. Retrieve Attempt Context"| EX
         
-        E1 -.->|Count Invocations| TC
-        SP -.->|Count Submissions / Drops| TC
-        EX -.->|Count Submissions / Drops| TC
+        E1 -.->|"Count Invocations"| TC
+        SP -.->|"Count Submissions / Drops"| TC
+        EX -.->|"Count Submissions / Drops"| TC
 
-        SEQ -->|Atomic Increment| RB
-        SP -->|Submit Committed Event (360B)| RB
-        EX -->|Submit Failed Event (360B)| RB
+        SEQ -->|"Atomic Increment"| RB
+        SP -->|"Submit Committed Event (360B)"| RB
+        EX -->|"Submit Failed Event (360B)"| RB
     end
 
     subgraph UserSpacePipeline ["ContainerGuard Userspace Daemon"]
@@ -181,33 +181,33 @@ flowchart TD
         subgraph IngestionBoundary ["Ingestion Boundary"]
             CR["Ring Buffer Consumer<br/>(internal/collector)"]
             ING["Pipeline Ingester<br/>(Sequence Integrity Verification)"]
-            CR -->|360B Binary Event| ING
+            CR -->|"360B Binary Event"| ING
         end
 
         subgraph AttributionEngine ["Container Attribution Engine"]
             AB["Attribution Buffer<br/>(FIFO Queue & Inode Index)"]
             CRZ["Container Resolver & Tombstone Cache<br/>(Map Inode to Container Context)"]
-            DR["Docker Engine Socket<br/>(/var/run/docker.sock)"] -->|Lifecycle Events| CRZ
-            CG["cgroup v2 Hierarchy<br/>(/sys/fs/cgroup)"] -->|Inode Inspection| CRZ
-            ING -->|Raw Event| AB
-            CRZ -->|Bind Inode Mapping| AB
+            DR["Docker Engine Socket<br/>(/var/run/docker.sock)"] -->|"Lifecycle Events"| CRZ
+            CG["cgroup v2 Hierarchy<br/>(/sys/fs/cgroup)"] -->|"Inode Inspection"| CRZ
+            ING -->|"Raw Event"| AB
+            CRZ -->|"Bind Inode Mapping"| AB
         end
 
         subgraph AnalysisEngine ["Lineage & Detection Pipeline"]
             LT["Lineage Tracker<br/>(Process Tree & Cgroup History)"]
             DE["Detection Engine<br/>(Rules 001, 002, 003)"]
-            AB -->|Attributed SecurityEvent| LT
-            LT -->|Enriched Process Context| DE
+            AB -->|"Attributed SecurityEvent"| LT
+            LT -->|"Enriched Process Context"| DE
         end
 
         subgraph PersistenceBoundary ["Persistence Boundary"]
             ST["Storage Manager<br/>(exec_paths_events.jsonl & exec_paths_alerts.jsonl)"]
-            DE -->|Security Alerts| ST
-            LT -->|Enriched Telemetry| ST
+            DE -->|"Security Alerts"| ST
+            LT -->|"Enriched Telemetry"| ST
         end
     end
 
-    RB ==>|mmap RingBuf Stream (368B On-Wire Records)| CR
+    RB ==>|"mmap RingBuf Stream (368B On-Wire Records)"| CR
 
     classDef kernel fill:#1f2937,stroke:#3b82f6,stroke-width:2px,color:#fff;
     classDef userspace fill:#111827,stroke:#10b981,stroke-width:2px,color:#fff;
@@ -420,24 +420,24 @@ $$\text{Kernel Hook Invocations} = \text{Ring Buffer Submissions} + \text{Kernel
 flowchart TD
     subgraph S1 ["1. Kernel Loss Accounting Boundary"]
         direction LR
-        K1["Kernel Tracepoint Hook"] -->|bpf_ringbuf_reserve| RES{"Buffer Space?"}
-        RES -->|Space Available| K2["bpf_ringbuf_submit()"]
-        RES -->|Buffer Saturated| K3["Increment CG_METRIC_RB_RESERVE_DROPS"]
+        K1["Kernel Tracepoint Hook"] -->|"bpf_ringbuf_reserve"| RES{"Buffer Space?"}
+        RES -->|"Space Available"| K2["bpf_ringbuf_submit()"]
+        RES -->|"Buffer Saturated"| K3["Increment CG_METRIC_RB_RESERVE_DROPS"]
     end
 
     subgraph S2 ["2. Userspace Ingestion & Gap Detection"]
         direction LR
-        K2 ==>|RingBufReader mmap| DEC["Binary Decoder (360B Event)"]
-        DEC -->|Verify Monotonicity| SEQ{"Sequence Continuous?"}
-        SEQ -->|Continuous (Delta = 1)| BUF["Attribution Buffer (FIFO Queue)"]
-        SEQ -->|Delta > 1 (Loss Detected)| GAP["Log Sequence Anomaly"]
+        K2 ==>|"RingBufReader mmap"| DEC["Binary Decoder (360B Event)"]
+        DEC -->|"Verify Monotonicity"| SEQ{"Sequence Continuous?"}
+        SEQ -->|"Continuous (Delta = 1)"| BUF["Attribution Buffer (FIFO Queue)"]
+        SEQ -->|"Delta > 1 (Loss Detected)"| GAP["Log Sequence Anomaly"]
     end
 
     subgraph S3 ["3. Graceful Termination & Loss Accounting Drain"]
         direction LR
-        BUF ==>|Daemon Shutdown| D1["StopReader: Detach Ring Buffer"]
-        D1 -->|Flush Ingestion Pipeline| D2["Drain Ingester & Attribution Buffer"]
-        D2 -->|Synchronous Map Read| D3["Verify: Hook Calls == Submissions + Drops"]
+        BUF ==>|"Daemon Shutdown"| D1["StopReader: Detach Ring Buffer"]
+        D1 -->|"Flush Ingestion Pipeline"| D2["Drain Ingester & Attribution Buffer"]
+        D2 -->|"Synchronous Map Read"| D3["Verify: Hook Calls == Submissions + Drops"]
     end
 
     S1 ==> S2
@@ -474,30 +474,30 @@ flowchart TD
     subgraph Rule1 ["Rule 1: Privileged Breakout Utilities"]
         direction TB
         R1["CG-RULE-001<br/>Binary match: nsenter, unshare, chroot, modprobe, insmod"]
-        R1 -->|Match inside Container| A1["Emit CRITICAL Alert<br/>Attach Ancestor Lineage Chain"]
+        R1 -->|"Match inside Container"| A1["Emit CRITICAL Alert<br/>Attach Ancestor Lineage Chain"]
     end
 
     subgraph Rule2 ["Rule 2: Volatile Mount Execution"]
         direction TB
         R2["CG-RULE-002<br/>Path match: /tmp/, /dev/shm/, /var/tmp/"]
-        R2 -->|Match inside Container| A2["Emit HIGH Alert<br/>Untrusted Mount Execution"]
+        R2 -->|"Match inside Container"| A2["Emit HIGH Alert<br/>Untrusted Mount Execution"]
     end
 
     subgraph Rule3 ["Rule 3: Interactive Container Shell"]
         direction TB
         R3["CG-RULE-003<br/>Path match: /bin/sh, bash, dash, ash, zsh"]
-        R3 -->|Match inside Container| A3["Emit MEDIUM Alert<br/>Container Shell Ingress"]
+        R3 -->|"Match inside Container"| A3["Emit MEDIUM Alert<br/>Container Shell Ingress"]
     end
 
-    EVAL -->|Evaluate| R1
-    EVAL -->|Evaluate| R2
-    EVAL -->|Evaluate| R3
+    EVAL -->|"Evaluate"| R1
+    EVAL -->|"Evaluate"| R2
+    EVAL -->|"Evaluate"| R3
 
     A1 --> ALERTS["Security Alerts Sink<br/>(exec_paths_alerts.jsonl)"]
     A2 --> ALERTS
     A3 --> ALERTS
 
-    EVAL -->|No Rules Triggered| TELEM["Telemetry Stream Sink<br/>(exec_paths_events.jsonl)"]
+    EVAL -->|"No Rules Triggered"| TELEM["Telemetry Stream Sink<br/>(exec_paths_events.jsonl)"]
 
     classDef eval fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#fff;
     classDef rule fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#f8fafc;

@@ -36,8 +36,8 @@ flowchart TD
         TRACE["Kernel Tracepoint Hooks (5 Hooks)"]
         EBPF["ContainerGuard eBPF Programs (CO-RE)"]
         MAPS["BPF Ring Buffer & Atomic Counters"]
-        TRACE -->|Context & Arguments| EBPF
-        EBPF -->|Submit Events / Drops| MAPS
+        TRACE -->|"Context & Arguments"| EBPF
+        EBPF -->|"Submit Events / Drops"| MAPS
     end
 
     subgraph TD3 ["Trust Domain 3: Daemon Control Plane"]
@@ -46,10 +46,10 @@ flowchart TD
         LINEAGE["Lineage Tracker & Ingestion Pipeline"]
         DETECTION["Deterministic Detection Engine"]
         STORAGE["Local JSONL Persistence"]
-        DAEMON -->|Ingest Stream| LINEAGE
-        LINEAGE -->|Enriched Process Context| DETECTION
-        DETECTION -->|Security Alerts| STORAGE
-        LINEAGE -->|Telemetry Stream| STORAGE
+        DAEMON -->|"Ingest Stream"| LINEAGE
+        LINEAGE -->|"Enriched Process Context"| DETECTION
+        DETECTION -->|"Security Alerts"| STORAGE
+        LINEAGE -->|"Telemetry Stream"| STORAGE
     end
 
     subgraph TD2 ["Trust Domain 2: Container Runtime & Host"]
@@ -59,9 +59,9 @@ flowchart TD
         PROC["/proc Filesystem (Host PIDs)"]
     end
 
-    TD1 ==>|Syscall Boundary: execve / execveat| TRACE
-    MAPS ==>|mmap Boundary: 360B Binary Stream| DAEMON
-    TD2 -.->|Lifecycle Events & Inode Inspection| DAEMON
+    TD1 ==>|"Syscall Boundary: execve / execveat"| TRACE
+    MAPS ==>|"mmap Boundary: 360B Binary Stream"| DAEMON
+    TD2 -.->|"Lifecycle Events & Inode Inspection"| DAEMON
 
     classDef td1 fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fff;
     classDef td2 fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fff;
