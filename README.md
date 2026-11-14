@@ -91,20 +91,10 @@ flowchart LR
     P4 ==>|"Loss Accounting"| D4
     P5 ==>|"Intercept Entry"| D5
 
-    subgraph ClearanceSpacer [" "]
-        direction LR
-        SPACER["Guaranteed Invariants: Zero Untracked Dropped Events & Monotonic Lineage Integrity"]
-    end
-
-    ObservabilityProblems --- ClearanceSpacer
-    ContainerGuardDefense --- ClearanceSpacer
-
     classDef prob fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fff;
     classDef defn fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff;
-    classDef space fill:#0f172a,stroke:#334155,stroke-width:1px,stroke-dasharray: 4 4,color:#94a3b8;
     class P1,P2,P3,P4,P5 prob;
     class D1,D2,D3,D4,D5 defn;
-    class SPACER space;
 ```
 
 1. **PID Recycling:** In container hosts executing thousands of micro-tasks, the operating system recycles bounded integer process identifiers (governed by `/proc/sys/kernel/pid_max` and container namespace boundaries). A naive lineage tracker that keys processes on PID will attribute actions of a newly spawned process to a dead ancestor process.
