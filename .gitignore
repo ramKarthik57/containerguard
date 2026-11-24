@@ -21,3 +21,14 @@ Thumbs.db
 docs/evidence/*/runs/
 build/
 *.tar.gz
+
+# LaTeX intermediate build artifacts
+*.aux
+*.nav
+*.snm
+*.toc
+*:Zone.Identifier
+
+# Visual inspection page renders
+docs/pdf_pages/
+docs/slide_pages/

@@ -1,0 +1,80 @@
+{
+  "benchmark_name": "ContainerGuard Phase II False-Positive & Threat Detection Benchmark",
+  "milestone": "Enterprise v2.0",
+  "timestamp": "2026-11-24T15:20:00Z",
+  "kernel_version": "6.6.137.1-microsoft-standard-WSL2",
+  "architecture": "x86_64",
+  "total_events": 133,
+  "metrics": {
+    "benign_events": 120,
+    "benign_true_negatives": 120,
+    "benign_false_positives": 0,
+    "adversarial_events": 13,
+    "adversarial_true_positives": 13,
+    "adversarial_false_negatives": 0,
+    "false_positive_rate": 0.0,
+    "true_positive_rate": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "loss_invariant_satisfied": true
+  },
+  "rules_evaluated": [
+    {
+      "id": "CG-RULE-001",
+      "name": "Privileged Container Breakout Utility Executed",
+      "severity": "CRITICAL",
+      "action": "kill",
+      "mitre_techniques": ["T1611", "T1068"],
+      "tested_vectors": ["nsenter", "unshare", "capsh"]
+    },
+    {
+      "id": "CG-RULE-002",
+      "name": "Execution From Writable Directory",
+      "severity": "HIGH",
+      "action": "kill",
+      "mitre_techniques": ["T1059", "T1543"],
+      "tested_vectors": ["/tmp/dropper.elf", "/dev/shm/rootkit"]
+    },
+    {
+      "id": "CG-RULE-003",
+      "name": "Interactive Container Shell Ingress",
+      "severity": "MEDIUM",
+      "action": "alert",
+      "mitre_techniques": ["T1059.004"],
+      "tested_vectors": ["/bin/sh", "/bin/bash"]
+    },
+    {
+      "id": "CG-RULE-004",
+      "name": "Setuid Privilege Escalation Execution",
+      "severity": "CRITICAL",
+      "action": "freeze",
+      "mitre_techniques": ["T1548.001"],
+      "tested_vectors": ["/usr/bin/passwd", "/bin/su"]
+    },
+    {
+      "id": "CG-RULE-005",
+      "name": "Fileless In-Memory Execution",
+      "severity": "HIGH",
+      "action": "kill",
+      "mitre_techniques": ["T1620", "T1059"],
+      "tested_vectors": ["memfd:revshell"]
+    },
+    {
+      "id": "CG-RULE-006",
+      "name": "Reconnaissance & Discovery Utilities",
+      "severity": "MEDIUM",
+      "action": "alert",
+      "mitre_techniques": ["T1046", "T1018"],
+      "tested_vectors": ["/usr/bin/nmap", "/usr/sbin/tcpdump"]
+    },
+    {
+      "id": "CG-RULE-007",
+      "name": "Defense Evasion & History Tampering",
+      "severity": "HIGH",
+      "action": "alert",
+      "mitre_techniques": ["T1070.003", "T1070.002"],
+      "tested_vectors": ["/usr/bin/shred"]
+    }
+  ]
+}

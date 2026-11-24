@@ -1,0 +1,109 @@
+# ContainerGuard Phase II Enterprise Policy Configuration
+version: "v2"
+
+daemon:
+  metrics_interval: 5s
+  pending_ttl: 2s
+  ringbuf_size_kb: 16384
+  log_level: "info"
+
+mitigation:
+  enabled: true
+  mode: "enforce" # "audit" (log only) or "enforce" (active response)
+  default_action: "alert" # alert, kill, freeze, quarantine
+  cooldown: 5s
+
+export:
+  jsonl:
+    events_log: "docs/evidence/exec_paths_events.jsonl"
+    alerts_log: "docs/evidence/exec_paths_alerts.jsonl"
+    mitigations_log: "docs/evidence/exec_paths_mitigations.jsonl"
+  sqlite:
+    enabled: true
+    path: "docs/evidence/containerguard_evidence.db"
+  prometheus:
+    enabled: true
+    listen_addr: ":9115"
+    path: "/metrics"
+  webhook:
+    enabled: false
+    url: "http://localhost:8080/api/v1/alerts"
+    timeout: 3s
+
+rules:
+  - id: "CG-RULE-001"
+    name: "Privileged Container Breakout Utility Executed"
+    description: "Detects namespace manipulation or privilege escalation binaries"
+    severity: "CRITICAL"
+    enabled: true
+    mitigation_action: "kill"
+    mitre_attack: ["T1611", "T1068"]
+    conditions:
+      match_binaries: ["nsenter", "unshare", "capsh", "chroot", "modprobe", "insmod"]
+      container_only: true
+
+  - id: "CG-RULE-002"
+    name: "Execution From Writable Directory"
+    description: "Detects executable launched from writable memory mounts or temporary paths"
+    severity: "HIGH"
+    enabled: true
+    mitigation_action: "kill"
+    mitre_attack: ["T1059", "T1543"]
+    conditions:
+      path_prefixes: ["/tmp/", "/dev/shm/", "/var/tmp/", "/run/"]
+      container_only: true
+
+  - id: "CG-RULE-003"
+    name: "Interactive Container Shell Ingress"
+    description: "Detects interactive shell invocation inside container"
+    severity: "MEDIUM"
+    enabled: true
+    mitigation_action: "alert"
+    mitre_attack: ["T1059.004"]
+    conditions:
+      match_binaries: ["/bin/sh", "/bin/bash", "/bin/dash", "/bin/ash", "/bin/zsh"]
+      container_only: true
+
+  - id: "CG-RULE-004"
+    name: "Setuid Privilege Escalation Execution"
+    description: "Detects process executing with elevated effective UID (EUID != UID) inside container"
+    severity: "CRITICAL"
+    enabled: true
+    mitigation_action: "freeze"
+    mitre_attack: ["T1548.001"]
+    conditions:
+      require_setuid_flag: true
+      container_only: true
+
+  - id: "CG-RULE-005"
+    name: "Fileless In-Memory Execution"
+    description: "Detects execution via execveat with AT_EMPTY_PATH (memfd fileless execution)"
+    severity: "HIGH"
+    enabled: true
+    mitigation_action: "kill"
+    mitre_attack: ["T1620", "T1059"]
+    conditions:
+      require_empty_path_flag: true
+      container_only: true
+
+  - id: "CG-RULE-006"
+    name: "Reconnaissance & Discovery Utilities"
+    description: "Detects network scanning, packet capture, or host probing utilities"
+    severity: "MEDIUM"
+    enabled: true
+    mitigation_action: "alert"
+    mitre_attack: ["T1046", "T1018"]
+    conditions:
+      match_binaries: ["nmap", "tcpdump", "arp-scan", "masscan", "zmap"]
+      container_only: true
+
+  - id: "CG-RULE-007"
+    name: "Defense Evasion & History Tampering"
+    description: "Detects commands attempting to wipe shell history or clear system logs"
+    severity: "HIGH"
+    enabled: true
+    mitigation_action: "alert"
+    mitre_attack: ["T1070.003", "T1070.002"]
+    conditions:
+      match_binaries: ["shred", "wipefs", "srm"]
+      container_only: true

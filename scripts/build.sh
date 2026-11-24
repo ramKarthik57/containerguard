@@ -37,9 +37,10 @@ if [ -n "$unformatted" ]; then
 fi
 (cd "${ROOT_DIR}" && go vet ./...)
 
-# 3. Build ContainerGuard daemon
-echo "[3/3] Compiling Go daemon..."
+# 3. Build ContainerGuard daemon and CLI utilities
+echo "[3/3] Compiling Go daemon and cg-top..."
 (cd "${ROOT_DIR}" && go build -o "${OUT_BIN_DIR}/containerguard" ./cmd/containerguard)
+(cd "${ROOT_DIR}" && go build -o "${OUT_BIN_DIR}/cg-top" ./cmd/cg-top)
 
 echo "=== Build Complete ==="
 
