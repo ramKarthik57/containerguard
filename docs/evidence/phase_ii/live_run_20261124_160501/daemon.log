@@ -1,0 +1,84 @@
+2026/11/24 16:05:01 =================================================================
+2026/11/24 16:05:01  ContainerGuard v2.0: Resilient eBPF Runtime Detection & Mitigation
+2026/11/24 16:05:01 =================================================================
+2026/11/24 16:05:01 [policy] Loaded configuration from /home/ram/ebpf-smoke-test/docs/evidence/phase_ii/live_run_20261124_160501/containerguard.yaml (3 rules active)
+2026/11/24 16:05:01 [export] Prometheus metrics listening on :9115/metrics
+2026/11/24 16:05:01 [mitigation] Runtime containment engine active (mode: ENFORCE, default_action: kill)
+2026/11/24 16:05:01 [collector] configured Ring Buffer capacity: 16384 KiB (16777216 bytes)
+2026/11/24 16:05:01 [resolver] inventory reconciled: 2 active containers
+2026/11/24 16:05:01 [resolver] Docker lifecycle event monitor running
+2026/11/24 16:05:01 [collector] attached tracepoint syscalls/sys_enter_execve -> cg_execve_events
+2026/11/24 16:05:01 [collector] attached tracepoint syscalls/sys_enter_execveat -> cg_execveat_events
+2026/11/24 16:05:01 [collector] attached tracepoint sched/sched_process_exec -> cg_sched_process_exec
+2026/11/24 16:05:01 [collector] attached tracepoint syscalls/sys_exit_execve -> cg_execve_exit
+2026/11/24 16:05:01 [collector] attached tracepoint syscalls/sys_exit_execveat -> cg_execveat_exit
+2026/11/24 16:05:01 [collector] eBPF telemetry engine active: /home/ram/ebpf-smoke-test/bpf/execve_events.o (5 tracepoints attached)
+2026/11/24 16:05:01 [containerguard] Telemetry pipeline active. Awaiting container events...
+2026/11/24 16:05:02 [policy] Hot-reloading active rules and containment parameters...
+[policy] Configuration hot-reloaded successfully.
+TIME=2026-11-24T16:05:02.574574507Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=7 | CONTAINER=cg-test-a | CID=52274ed23949 | CGROUP=5061 (PCG=5061) | TGID=18997 | TID=18997 | PPID=17858 | START=6528882504067 | COMM=sleep | EXEC=/bin/sleep
+TIME=2026-11-24T16:05:02.911228752Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=8 | CONTAINER=cg-test-b-event-test | CID=2b604b614c95 | CGROUP=5581 (PCG=5581) | TGID=18998 | TID=18998 | PPID=17978 | START=6529219087877 | COMM=sleep | EXEC=/bin/sleep
+2026/11/24 16:05:03 [resolver] mapped container 'cg-phase2-live-test' (def0b348e559) -> cgroup 5797 (path: /system.slice/docker-def0b348e55905c946a291941a0bd7fcc6eaac050ff27dafe48afe169b9e901a.scope)
+TIME=2026-11-24T16:05:03.415417816Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=23 | CONTAINER=cg-phase2-live-test | CID=def0b348e559 | CGROUP=5797 (PCG=2889) | TGID=19060 | TID=19060 | PPID=19036 | START=6529622724912 | COMM=sleep | EXEC=/bin/sleep
+TIME=2026-11-24T16:05:02.015724048Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=0 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18987 | TID=18987 | PPID=18895 | START=6528323345885 | COMM=curl | EXEC=/usr/bin/curl
+TIME=2026-11-24T16:05:02.015922949Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=1 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18988 | TID=18988 | PPID=18895 | START=6528323560386 | COMM=grep | EXEC=/usr/bin/grep
+TIME=2026-11-24T16:05:02.025307608Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=2 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18990 | TID=18990 | PPID=18895 | START=6528333007017 | COMM=curl | EXEC=/usr/bin/curl
+TIME=2026-11-24T16:05:02.034416081Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=3 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18993 | TID=18993 | PPID=18992 | START=6528342141529 | COMM=grep | EXEC=/usr/bin/grep
+TIME=2026-11-24T16:05:02.03442116Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=4 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18994 | TID=18994 | PPID=18992 | START=6528342324049 | COMM=awk | EXEC=/usr/bin/awk
+TIME=2026-11-24T16:05:02.036723494Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=5 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18995 | TID=18995 | PPID=18895 | START=6528344448677 | COMM=cat | EXEC=/usr/bin/cat
+TIME=2026-11-24T16:05:02.039438935Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=6 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18996 | TID=18996 | PPID=18895 | START=6528347322609 | COMM=sleep | EXEC=/usr/bin/sleep
+TIME=2026-11-24T16:05:04.479328865Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=28 | CONTAINER=cg-phase2-live-test | CID=def0b348e559 | CGROUP=5797 (PCG=2889) | TGID=19140 | TID=19140 | PPID=19130 | START=6530787268226 | COMM=6 | EXEC=/proc/self/fd/6
+2026/11/24 16:05:04 [ALERT] [MEDIUM] CG-RULE-003: Shell Binary Executed Inside Container (Container: cg-phase2-live-test, Exec: /bin/sh, Action: alert)
+TIME=2026-11-24T16:05:04.501378955Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=29 | CONTAINER=cg-phase2-live-test | CID=def0b348e559 | CGROUP=5797 (PCG=2889) | TGID=19142 | TID=19142 | PPID=19130 | START=6530788950992 | COMM=sh | EXEC=/bin/sh
+TIME=2026-11-24T16:05:04.50286119Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=30 | CONTAINER=cg-phase2-live-test | CID=def0b348e559 | CGROUP=5797 (PCG=5797) | TGID=19148 | TID=19148 | PPID=19142 | START=6530810869205 | COMM=chmod | EXEC=/bin/chmod
+2026/11/24 16:05:04 [ALERT] [HIGH] CG-RULE-002: Execution From Writable Directory (Container: cg-phase2-live-test, Exec: /tmp/malicious.sh, Action: kill)
+TIME=2026-11-24T16:05:04.503604725Z | STATUS=COMMITTED | STATE=RESOLVED | SEQ=31 | CONTAINER=cg-phase2-live-test | CID=def0b348e559 | CGROUP=5797 (PCG=2889) | TGID=19142 | TID=19142 | PPID=19036 | START=6530788950992 | COMM=malicious.sh | EXEC=/tmp/malicious.sh
+2026/11/24 16:05:04 [resolver] container unmapped: def0b348e559 (cgroup 5797 moved to stale cache)
+TIME=2026-11-24T16:05:03.042919429Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=9 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=18999 | TID=18999 | PPID=18895 | START=6529350650312 | COMM=grep | EXEC=/usr/bin/grep
+TIME=2026-11-24T16:05:03.04445444Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=10 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19000 | TID=19000 | PPID=18895 | START=6529352253459 | COMM=curl | EXEC=/usr/bin/curl
+TIME=2026-11-24T16:05:03.053659843Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=11 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19003 | TID=19003 | PPID=19002 | START=6529361495843 | COMM=grep | EXEC=/usr/bin/grep
+TIME=2026-11-24T16:05:03.053763852Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=12 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19004 | TID=19004 | PPID=19002 | START=6529361626914 | COMM=awk | EXEC=/usr/bin/awk
+TIME=2026-11-24T16:05:03.05567041Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=13 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19005 | TID=19005 | PPID=18895 | START=6529363566531 | COMM=docker | EXEC=/usr/bin/docker
+TIME=2026-11-24T16:05:03.074013627Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=14 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19016 | TID=19016 | PPID=18895 | START=6529381777720 | COMM=docker | EXEC=/usr/bin/docker
+TIME=2026-11-24T16:05:03.264326574Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=15 | CONTAINER=- | CID=- | CGROUP=2889 (PCG=2889) | TGID=19028 | TID=19028 | PPID=579 | START=6529572255893 | COMM=containerd-shim | EXEC=/usr/bin/containerd-shim-runc-v2
+TIME=2026-11-24T16:05:03.269259356Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=16 | CONTAINER=- | CID=- | CGROUP=2889 (PCG=2889) | TGID=19036 | TID=19036 | PPID=19028 | START=6529577283226 | COMM=containerd-shim | EXEC=/usr/bin/containerd-shim-runc-v2
+TIME=2026-11-24T16:05:03.274835883Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=17 | CONTAINER=- | CID=- | CGROUP=2889 (PCG=2889) | TGID=19047 | TID=19047 | PPID=19036 | START=6529582815449 | COMM=runc | EXEC=/usr/bin/runc
+TIME=2026-11-24T16:05:03.279685013Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=18 | CONTAINER=- | CID=- | CGROUP=2889 (PCG=2889) | TGID=19057 | TID=19057 | PPID=19047 | START=6529587676421 | COMM=6 | EXEC=/proc/self/fd/6
+TIME=2026-11-24T16:05:03.352632764Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=19 | CONTAINER=- | CID=- | CGROUP=3210 (PCG=3210) | TGID=19066 | TID=19066 | PPID=610 | START=6529660503999 | COMM=iptables | EXEC=/usr/sbin/iptables
+TIME=2026-11-24T16:05:03.354596045Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=20 | CONTAINER=- | CID=- | CGROUP=3210 (PCG=3210) | TGID=19067 | TID=19067 | PPID=610 | START=6529662583040 | COMM=iptables | EXEC=/usr/sbin/iptables
+TIME=2026-11-24T16:05:03.362270718Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=21 | CONTAINER=- | CID=- | CGROUP=1806 (PCG=1806) | TGID=19069 | TID=19069 | PPID=19068 | START=6529669876500 | COMM=systemd-sysctl | EXEC=/usr/lib/systemd/systemd-sysctl
+TIME=2026-11-24T16:05:03.409743825Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=22 | CONTAINER=- | CID=- | CGROUP=2889 (PCG=2889) | TGID=19101 | TID=19101 | PPID=19036 | START=6529717633445 | COMM=runc | EXEC=/usr/bin/runc
+TIME=2026-11-24T16:05:03.431566664Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=24 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19107 | TID=19107 | PPID=18895 | START=6529739455090 | COMM=sleep | EXEC=/usr/bin/sleep
+TIME=2026-11-24T16:05:04.435076482Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=25 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19108 | TID=19108 | PPID=18895 | START=6530742719743 | COMM=docker | EXEC=/usr/bin/docker
+TIME=2026-11-24T16:05:04.453192396Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=26 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19119 | TID=19119 | PPID=18895 | START=6530760962440 | COMM=docker | EXEC=/usr/bin/docker
+TIME=2026-11-24T16:05:04.473755866Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=27 | CONTAINER=- | CID=- | CGROUP=2889 (PCG=2889) | TGID=19130 | TID=19130 | PPID=19036 | START=6530781674685 | COMM=runc | EXEC=/usr/bin/runc
+TIME=2026-11-24T16:05:04.50738599Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=32 | CONTAINER=- | CID=- | CGROUP=238 (PCG=238) | TGID=19149 | TID=19149 | PPID=18895 | START=6530815002510 | COMM=sleep | EXEC=/usr/bin/sleep
+TIME=2026-11-24T16:05:04.5306203Z | STATUS=COMMITTED | STATE=UNRESOLVED | SEQ=33 | CONTAINER=- | CID=- | CGROUP=2889 (PCG=2889) | TGID=19151 | TID=19151 | PPID=19036 | START=6530838592561 | COMM=runc | EXEC=/usr/bin/runc
+2026/11/24 16:05:06 [containerguard] Shutdown signal received, terminating collector...
+2026/11/24 16:05:06 [collector] ring buffer consumer stopped gracefully
+
+=== FINAL TELEMETRY INTEGRITY ACCOUNTING REPORT ===
+{
+  "timestamp": "2026-11-24T16:05:06.555532833Z",
+  "kernel_hook_invocations": 49,
+  "kernel_ringbuf_reserve_drops": 0,
+  "kernel_ringbuf_submitted": 49,
+  "kernel_cgroup_map_fails": 0,
+  "userspace_records_received": 49,
+  "userspace_records_decoded": 49,
+  "userspace_decode_failures": 0,
+  "attribution_pending_transitions": 43,
+  "current_pending_queue_depth": 0,
+  "peak_pending_queue_depth": 33,
+  "attribution_resolved": 7,
+  "attribution_unresolved": 42,
+  "attribution_stale_mapping": 0,
+  "attribution_host_confirmed": 0,
+  "userspace_queue_overflows": 0,
+  "sequence_gaps_detected": 0,
+  "reordered_events": 0,
+  "events_processed": 49,
+  "processing_failures": 0,
+  "kernel_drop_rate_pct": 0,
+  "userspace_loss_count": 0
+}

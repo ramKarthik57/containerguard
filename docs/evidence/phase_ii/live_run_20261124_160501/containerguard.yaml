@@ -1,0 +1,72 @@
+version: "v2"
+
+daemon:
+  metrics_interval: 1s
+  pending_ttl: 2s
+  ringbuf_size_kb: 16384
+  log_level: "info"
+
+mitigation:
+  enabled: true
+  mode: "enforce"
+  default_action: "kill"
+  cooldown: 1s
+
+export:
+  jsonl:
+    events_log: "/home/ram/ebpf-smoke-test/docs/evidence/phase_ii/live_run_20261124_160501/exec_paths_events.jsonl"
+    alerts_log: "/home/ram/ebpf-smoke-test/docs/evidence/phase_ii/live_run_20261124_160501/exec_paths_alerts.jsonl"
+    mitigations_log: "/home/ram/ebpf-smoke-test/docs/evidence/phase_ii/live_run_20261124_160501/exec_paths_mitigations.jsonl"
+  sqlite:
+    enabled: true
+    path: "/home/ram/ebpf-smoke-test/docs/evidence/phase_ii/live_run_20261124_160501/containerguard_evidence.db"
+  prometheus:
+    enabled: true
+    listen_addr: ":9115"
+    path: "/metrics"
+  webhook:
+    enabled: false
+
+rules:
+  - id: "CG-RULE-001"
+    name: "Privileged Container Breakout Utility Executed"
+    description: "Detects namespace manipulation or privilege escalation binaries"
+    severity: "CRITICAL"
+    enabled: true
+    mitigation_action: "kill"
+    mitre_attack: ["T1611", "T1068"]
+    conditions:
+      match_binaries: ["nsenter", "unshare", "capsh", "chroot", "modprobe", "insmod"]
+      container_only: true
+
+  - id: "CG-RULE-002"
+    name: "Execution From Writable Directory"
+    description: "Detects executable launched from writable memory mounts or temporary paths"
+    severity: "HIGH"
+    enabled: true
+    mitigation_action: "kill"
+    mitre_attack: ["T1059", "T1543"]
+    conditions:
+      path_prefixes: ["/tmp/", "/dev/shm/", "/var/tmp/", "/run/"]
+      container_only: true
+
+  - id: "CG-RULE-003"
+    name: "Interactive Container Shell Ingress"
+    description: "Detects interactive shell invocation inside container"
+    severity: "MEDIUM"
+    enabled: true
+    mitigation_action: "alert"
+    mitre_attack: ["T1059.004"]
+    conditions:
+      match_binaries: ["/bin/sh", "/bin/bash", "/bin/dash", "/bin/ash", "/bin/zsh"]
+      container_only: true
+
+  - id: "CG-RULE-999"
+    name: "Live Hot-Reload Verification Probe"
+    description: "Temporary canary rule injected during live SIGHUP verification"
+    severity: "LOW"
+    enabled: true
+    mitigation_action: "alert"
+    conditions:
+      match_binaries: ["/bin/canary_probe"]
+      container_only: true

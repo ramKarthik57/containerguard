@@ -82,11 +82,36 @@ Here, `29845` is the root-namespace TGID, and `14` is the child-namespace PID. C
 If the rogue process is executing in an isolated PID namespace that userspace cannot translate, or if the process exits before `syscall.Kill` executes, ContainerGuard falls back to writing `1` to `/sys/fs/cgroup/<path>/cgroup.kill`.
 - **Kernel Mechanism:** `cgroup.kill` is an atomic cgroupv2 kernel interface introduced in Linux 5.14. It signals every process in the cgroup leaf with `SIGKILL` directly inside the kernel, bypassing userspace PID namespace lookups entirely.
 
-### 2.3 Empirical Live Verification Results
-In controlled verification runs on Linux 6.6.137 WSL2:
-- Host PID Guardrail: Evaluated on host process (`CgroupID = 1`, `ContainerID = "host"`). Mitigation blocked with 100% compliance (`reason: "action aborted: target is host or root cgroup"`).
-- Container Process Kill: Rogue process spawned in container `cg-test-a`. Local PID `14` (Root TGID `29845`) successfully translated and signaled with `SIGKILL`. Target terminated in **1.42 ms**.
-- Cgroup Escalation: High-velocity fork loop spawned inside isolated container. Direct PID translation bypassed; `cgroup.kill` invoked. Entire container cgroup terminated in **3.85 ms** with 0 surviving orphan processes.
+### 2.3 Empirical Live Verification Results (Run Artifact: `live_run_20261124_160501`)
+A complete, isolated live verification run was executed on the live WSL2 kernel (`Linux 6.18.58.1-microsoft-standard-WSL2`, Docker 29.9.3, Cgroupv2 unified hierarchy) via [`scripts/phase2_live_verify.sh`](../scripts/phase2_live_verify.sh). All raw artifacts are preserved in [`docs/evidence/phase_ii/live_run_20261124_160501/`](evidence/phase_ii/live_run_20261124_160501/):
+
+1. **Prometheus Exposition & Loss Invariant:**
+   - Scraped from `http://localhost:9115/metrics` ([`prometheus_initial.prom`](evidence/phase_ii/live_run_20261124_160501/prometheus_initial.prom)):
+     $$\text{containerguard\_loss\_invariant\_satisfied} = \mathbf{1}$$
+2. **Zero-Downtime SIGHUP Policy Hot-Reload:**
+   - Live daemon signaled with `kill -HUP <daemon_pid>` after injecting canary rule `CG-RULE-999`.
+   - Reload logged in `daemon.log`: `[policy] Hot-reloading active rules and containment parameters...`
+   - Post-reload scrape ([`prometheus_post_reload.prom`](evidence/phase_ii/live_run_20261124_160501/prometheus_post_reload.prom)) confirmed invariant maintained:
+     $$\text{containerguard\_loss\_invariant\_satisfied} = \mathbf{1} \quad (D = 0)$$
+3. **Live Active Containment (`NStgid` + `cgroup.kill`):**
+   - Disposable container `cg-phase2-live-test` (`def0b348e559...`) spawned running `busybox sleep 300`.
+   - Exploit triggered: execution of `/tmp/malicious.sh` inside container (`CG-RULE-002`, Severity: `HIGH`, Action: `kill`).
+   - Mitigation engine executed containment:
+     ```text
+     Process kill escalated to atomic cgroup.kill for container cg-phase2-live-test
+     (/sys/fs/cgroup/system.slice/docker-def0b348e55905c946a291941a0bd7fcc6eaac050ff27dafe48afe169b9e901a.scope)
+     ```
+   - Target workload terminated with `success: 1`.
+4. **Preservation of Baseline Research Containers:**
+   - Evaluated via `docker inspect`:
+     - `cg-test-a`: `running = true` (UNTOUCHED)
+     - `cg-test-b-event-test`: `running = true` (UNTOUCHED)
+     - Host processes: strictly protected by root cgroup guardrail ($\text{CgroupID} \le 1$).
+5. **SQLite WAL Database Verification (`sqlite_verification.txt`):**
+   - After graceful daemon shutdown, native `sqlite3` queries verified relational integrity:
+     - `events`: **49** captured process lifecycle records.
+     - `alerts`: **2** alerts (`CG-RULE-003` Shell spawn, `CG-RULE-002` Writable dir exec).
+     - `mitigations`: **2** records (`MIT-29-CG-RULE-003` audit logged, `MIT-31-CG-RULE-002` cgroup.kill executed).
 
 ---
 

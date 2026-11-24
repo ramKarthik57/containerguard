@@ -836,6 +836,15 @@ ContainerGuard solves this via a dual-layer mitigation engine:
     \item \textbf{Layer 2 (\texttt{cgroup.kill} Kernel Escalation):} If namespace boundaries prevent direct signalling, ContainerGuard writes \texttt{1} to \texttt{/sys/fs/cgroup/.../cgroup.kill}. This atomic kernel interface signals all processes in the rogue cgroup simultaneously without PID namespace dependencies.
 \end{enumerate}
 
+\subsection{Live WSL2 Empirical Verification (Run \texttt{live\_run\_20261124\_160501})}
+Phase II active containment and live persistence were verified on the live Linux 6.18.58 WSL2 kernel using the automated harness \texttt{scripts/phase2\_live\_verify.sh}:
+\begin{itemize}
+    \item \textbf{Prometheus Loss Invariant:} Scraped live from \texttt{:9115/metrics}, verifying \texttt{containerguard\_loss\_invariant\_satisfied = 1}.
+    \item \textbf{Zero-Downtime Hot-Reload:} Dynamically reloaded canary policy \texttt{CG-RULE-999} via \texttt{SIGHUP} with zero ring-buffer drops ($D = 0$).
+    \item \textbf{Live Containment (\texttt{cgroup.kill}):} Injected exploit \texttt{/tmp/malicious.sh} in disposable container \texttt{cg-phase2-live-test}. The mitigation engine resolved the PID namespace and escalated to writing \texttt{1} to the container's cgroup leaf, terminating the workload while baseline research containers (\texttt{cg-test-a}, \texttt{cg-test-b-event-test}) remained 100\% running.
+    \item \textbf{SQLite WAL Persistence:} Verified relational database storage: 49 captured events, 2 alerts, and 2 mitigations recorded and audited via native \texttt{sqlite3} queries.
+\end{itemize}
+
 \subsection{Structured Storage Subsystem: Pure CGO-Free SQLite WAL}
 ContainerGuard replaces external database dependencies with an embedded pure Go SQLite database (\texttt{modernc.org/sqlite}):
 \begin{itemize}

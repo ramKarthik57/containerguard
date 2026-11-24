@@ -1,0 +1,29 @@
+# HELP containerguard_hook_calls_total Total eBPF tracepoint hook invocations in kernel
+# TYPE containerguard_hook_calls_total counter
+containerguard_hook_calls_total 8
+
+# HELP containerguard_ringbuf_submitted_total Total events submitted to BPF ring buffer
+# TYPE containerguard_ringbuf_submitted_total counter
+containerguard_ringbuf_submitted_total 8
+
+# HELP containerguard_ringbuf_reserve_drops_total Total events dropped in kernel due to ring buffer saturation
+# TYPE containerguard_ringbuf_reserve_drops_total counter
+containerguard_ringbuf_reserve_drops_total 0
+
+# HELP containerguard_events_processed_total Total events processed through userspace pipeline
+# TYPE containerguard_events_processed_total counter
+containerguard_events_processed_total 2
+
+# HELP containerguard_sequence_gaps_total Sequence number anomalies detected by ingester
+# TYPE containerguard_sequence_gaps_total counter
+containerguard_sequence_gaps_total 0
+
+# HELP containerguard_loss_invariant_satisfied 1 if Hooks == Submissions + Drops, 0 if violated
+# TYPE containerguard_loss_invariant_satisfied gauge
+containerguard_loss_invariant_satisfied 1
+
+# HELP containerguard_alerts_total Total intrusion alerts triggered
+# TYPE containerguard_alerts_total counter
+
+# HELP containerguard_mitigations_total Total runtime containment actions executed
+# TYPE containerguard_mitigations_total counter

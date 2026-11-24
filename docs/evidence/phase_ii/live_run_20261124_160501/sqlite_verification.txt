@@ -1,0 +1,18 @@
+=== ContainerGuard SQLite Database Audit Verification ===
+Database File: /home/ram/ebpf-smoke-test/docs/evidence/phase_ii/live_run_20261124_160501/containerguard_evidence.db
+Timestamp:     20261124_160501
+
+--- Table: events (Count) ---
+49
+
+--- Table: alerts ---
+id                    rule_id      title                                   severity  action  container_id                                                    
+--------------------  -----------  --------------------------------------  --------  ------  ----------------------------------------------------------------
+ALERT-29-CG-RULE-003  CG-RULE-003  Shell Binary Executed Inside Container  MEDIUM    alert   def0b348e55905c946a291941a0bd7fcc6eaac050ff27dafe48afe169b9e901a
+ALERT-31-CG-RULE-002  CG-RULE-002  Execution From Writable Directory       HIGH      kill    def0b348e55905c946a291941a0bd7fcc6eaac050ff27dafe48afe169b9e901a
+
+--- Table: mitigations ---
+id                  rule_id      action_taken  tgid   success  message                                                                                                                                                                                   
+------------------  -----------  ------------  -----  -------  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+MIT-29-CG-RULE-003  CG-RULE-003  alert         19142  1        Audit logged (action: alert, mode: enforce)                                                                                                                                               
+MIT-31-CG-RULE-002  CG-RULE-002  kill          19142  1        Process kill escalated to atomic cgroup.kill for container cg-phase2-live-test (/sys/fs/cgroup/system.slice/docker-def0b348e55905c946a291941a0bd7fcc6eaac050ff27dafe48afe169b9e901a.scope)

@@ -1,0 +1,17 @@
+{
+  "timestamp": "20261124_160501",
+  "kernel": "6.18.58.1-microsoft-standard-WSL2",
+  "wsl2": true,
+  "verifications": {
+    "prometheus_metrics_active": true,
+    "initial_loss_invariant_satisfied": 1,
+    "post_reload_loss_invariant_satisfied": 1,
+    "sighup_hot_reload_success": true,
+    "live_containment_executed": true,
+    "baseline_containers_preserved": true,
+    "sqlite_wal_persistence_verified": true,
+    "events_count": 49,
+    "alerts_count": 2,
+    "mitigations_count": 2
+  }
+}

@@ -430,14 +430,14 @@
     Decoupled Process Identity & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} PID reuse test passed; TGID+StartTimeNS invariant. \\
     Loss Conservation Invariant & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Proof $125=125+0$ and saturation $H=S+D$ passed. \\
     Container Attribution & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Docker socket + cgroup v2 inode mapping; 0 host confusion. \\
-    Dynamic Policy Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} YAML parser + SIGHUP hot-reload (< 2.5 ms) verified. \\
-    Threat Detection Suite (Rules 001--007) & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} 0.00\% FPR, 100\% recall across 133-event unit corpus. \\
-    PID Namespace Translation & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} \texttt{NStgid} translation + \texttt{cgroup.kill} fallback verified. \\
-    Active Containment Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} SIGKILL, cgroup.freeze, and host guardrails verified. \\
-    SQLite Structured Storage & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} Pure CGO-free WAL storage verified ($<0.85$ ms write latency). \\
+    Dynamic Policy Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Zero-downtime SIGHUP hot-reload verified with $D=0$. \\
+    Threat Detection Suite (Rules 001--007) & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Synthetic Unit Corpus:} 0.00\% FPR, 100\% recall across 133-event corpus. \\
+    PID Namespace Translation & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} \texttt{NStgid} traversal + \texttt{cgroup.kill} escalation verified. \\
+    Active Containment Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Exploit killed in disposable container; baseline preserved. \\
+    SQLite Structured Storage & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Pure-Go WAL persistence (49 events, 2 alerts, 2 mitigations). \\
     Network Socket Correlation & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} Hex endpoint resolution \& parent-race fallback verified. \\
     Session \& TTY Inspection & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} PTY detection \& parent-session race fallback verified. \\
-    Prometheus Exporter \& TUI & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} Metrics scrape on :9115; \texttt{cg-top} dashboard verified. \\
+    Prometheus Exporter \& TUI & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Scraped on :9115; loss invariant satisfied ($1=1+0$). \\
     \bottomrule
   \end{tabularx}
 \end{frame}

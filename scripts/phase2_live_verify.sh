@@ -181,7 +181,7 @@ echo "  [OK] ContainerGuard daemon active. Prometheus /metrics responsive."
 
 # Capture initial metrics
 curl -s http://localhost:9115/metrics > "${RUN_DIR}/prometheus_initial.prom"
-INITIAL_INVARIANT=$(grep "containerguard_loss_invariant_satisfied" "${RUN_DIR}/prometheus_initial.prom" | awk '{print $2}')
+INITIAL_INVARIANT=$(grep -E "^containerguard_loss_invariant_satisfied " "${RUN_DIR}/prometheus_initial.prom" | awk '{print $2}')
 echo "  -> Initial Loss Invariant Metric: containerguard_loss_invariant_satisfied = ${INITIAL_INVARIANT}"
 if [[ "${INITIAL_INVARIANT}" != "1" ]]; then
     echo "Error: Telemetry loss conservation invariant not satisfied at startup!" >&2
@@ -219,7 +219,7 @@ else
 fi
 
 curl -s http://localhost:9115/metrics > "${RUN_DIR}/prometheus_post_reload.prom"
-POST_RELOAD_INVARIANT=$(grep "containerguard_loss_invariant_satisfied" "${RUN_DIR}/prometheus_post_reload.prom" | awk '{print $2}')
+POST_RELOAD_INVARIANT=$(grep -E "^containerguard_loss_invariant_satisfied " "${RUN_DIR}/prometheus_post_reload.prom" | awk '{print $2}')
 echo "  -> Post-Reload Loss Invariant: containerguard_loss_invariant_satisfied = ${POST_RELOAD_INVARIANT}"
 if [[ "${POST_RELOAD_INVARIANT}" != "1" ]]; then
     echo "Error: Invariant violated during policy hot-reload!" >&2
@@ -295,14 +295,14 @@ cat <<EOF >> "${SQLITE_OUT}"
 --- Table: alerts ---
 EOF
 sqlite3 -header -column "${RUN_DIR}/containerguard_evidence.db" \
-    "SELECT id, rule_id, title, severity, mitigation_action, container_id FROM alerts;" >> "${SQLITE_OUT}"
+    "SELECT id, rule_id, title, severity, action, container_id FROM alerts;" >> "${SQLITE_OUT}"
 
 cat <<EOF >> "${SQLITE_OUT}"
 
 --- Table: mitigations ---
 EOF
 sqlite3 -header -column "${RUN_DIR}/containerguard_evidence.db" \
-    "SELECT id, rule_id, action, target_tgid, cgroup_path, success, duration_ns FROM mitigations;" >> "${SQLITE_OUT}"
+    "SELECT id, rule_id, action_taken, tgid, success, message FROM mitigations;" >> "${SQLITE_OUT}"
 
 echo "SQLite verification queries complete:"
 cat "${SQLITE_OUT}"
@@ -342,6 +342,8 @@ cat <<EOF > "${SUMMARY_JSON}"
   }
 }
 EOF
+
+chown -R ram:ram "${RUN_DIR}" 2>/dev/null || chmod -R a+rw "${RUN_DIR}" 2>/dev/null || true
 
 echo ""
 echo "================================================================="
