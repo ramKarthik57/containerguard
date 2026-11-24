@@ -843,25 +843,27 @@ ContainerGuard replaces external database dependencies with an embedded pure Go 
     \item \textbf{Relational Evidence Schema:} Complete indexing across \texttt{events}, \texttt{alerts}, and \texttt{mitigations} tables, supporting instant forensic cross-filtering.
 \end{itemize}
 
-\subsection{Architectural \& Literature-Reported Comparison}
-The table below contrasts ContainerGuard's empirically measured Phase I overhead (+4.71\%, $10.22\ \mu\text{s}$ amortized wall-clock lifecycle delta) and release v2.0 footprint (14.2 MiB RSS) against published literature benchmarks and documented architectural specifications for contemporary container security engines (\textbf{Cilium Tetragon}, \textbf{Sysdig Falco}, and \textbf{Aqua Tracee}):
+\subsection{Architectural \& Feature Comparison}
+To ground ContainerGuard's positioning against contemporary container runtime security systems (\textbf{Cilium Tetragon}, \textbf{Sysdig Falco}, and \textbf{Aqua Tracee}), the matrix below contrasts core architectural mechanisms derived strictly from official upstream documentation:
 
 \begin{table}[H]
 \centering
 \small
 \begin{tabularx}{\textwidth}{l c c c c}
 \toprule
-\textbf{Metric / Subsystem Dimension} & \textbf{ContainerGuard v2.0 (Empirical)} & \textbf{Cilium Tetragon (Literature)} & \textbf{Sysdig Falco (Literature)} & \textbf{Aqua Tracee (Literature)} \\
+\textbf{Architectural Dimension} & \textbf{ContainerGuard v2.0} & \textbf{Cilium Tetragon} & \textbf{Sysdig Falco} & \textbf{Aqua Tracee} \\
 \midrule
-\textbf{Runtime Memory Footprint (RSS)} & \textbf{14.2 MiB} & $\sim 70\text{--}90\text{ MiB}$ & $\sim 50\text{--}75\text{ MiB}$ & $\sim 120\text{--}160\text{ MiB}$ \\
-\textbf{Lifecycle Latency Overhead} & \textbf{+4.71\%} ($10.22\ \mu\text{s}$) & $\sim 5\text{--}8\%$ ($15.5\ \mu\text{s}$) & $\sim 7\text{--}11\%$ ($20.3\ \mu\text{s}$) & $\sim 10\text{--}15\%$ ($26.6\ \mu\text{s}$) \\
-\textbf{Loss Visibility Invariant} & \textbf{100.00\% (Formal Invariant)} & Logged via ring buffer & Drops logged post-overrun & Drops reported via perf \\
-\textbf{Silent Drop Vulnerability} & \textbf{0.00\% ($H=S+D$)} & Low (drops logged on full) & Susceptible under burst & Susceptible under burst \\
-\textbf{Nested PID Containment} & \textbf{Native \texttt{NStgid} + cgroup.kill} & In-Kernel BPF & Fails (\texttt{ESRCH}) & In-Kernel BPF \\
-\textbf{Embedded Evidence Store} & \textbf{Pure SQLite WAL} & None (delegated stdout) & None (delegated syslog) & None (delegated JSON) \\
+\textbf{Kernel Probe Placement} & \textbf{Stable Tracepoints} & Kprobes \& BPF LSM & Kernel Driver/Tracepoints & Tracepoints \& Kprobes \\
+\textbf{Loss Invariant ($H = S + D$)} & \textbf{Formal Atomic Proof} & Buffer Statistics & Post-Overrun Log Counters & Perf Overrun Counters \\
+\textbf{Silent Event Loss Protection} & \textbf{Dual-Boundary Verified} & Buffer Statistics & Unmitigated on Overrun & Unmitigated on Overrun \\
+\textbf{Active Containment Strategy} & \textbf{\texttt{NStgid} + \texttt{cgroup.kill}} & In-Kernel BPF LSM & Userspace Sidecar (Talon) & In-Kernel BPF / Userspace \\
+\textbf{Nested PID NS Resilience} & \textbf{Native /proc + cgroupv2} & In-Kernel Task Struct & Vulnerable (\texttt{ESRCH}) & Mount/PID NS Tracking \\
+\textbf{Persistence Layer} & \textbf{Pure SQLite WAL} & External (stdout/Fluentd) & External (syslog/gRPC) & External (stdout/Webhook) \\
+\textbf{Policy Hot-Reload} & \textbf{Atomic SIGHUP (< 2.5 ms)} & Dynamic CRDs/Helm & SIGHUP Ruleset Reload & Dynamic Signature Reload \\
+\textbf{Deployment Footprint} & \textbf{Single Binary (14.2 MiB)} & Multi-Container DaemonSet & Agent Daemon + Drivers & DaemonSet / Standalone \\
 \bottomrule
 \end{tabularx}
-\caption{Architectural \& Literature-Reported Comparison Across Container Runtime Security Systems.}
+\caption{Architectural \& Feature Matrix Across Container Runtime Security Systems.}
 \label{tab:comparative_benchmark}
 \end{table}
 

@@ -372,32 +372,34 @@
 % =========================================================================
 % SLIDE 13: ARCHITECTURAL COMPARISON & SYNTHETIC POLICY VALIDATION
 % =========================================================================
-\begin{frame}{Architectural Comparison \& Synthetic Policy Validation}{ContainerGuard vs. Literature-Reported Baselines \& Unit-Corpus Verification}
+\begin{frame}{Architectural \& Feature Matrix \& Synthetic Policy Validation}{ContainerGuard vs. Upstream Industry Architectures \& Unit-Corpus Verification}
   \begin{columns}[T]
-    \begin{column}{0.51\textwidth}
-      \begin{block}{Literature-Reported Baseline (Linux)}
+    \begin{column}{0.52\textwidth}
+      \begin{block}{Architectural \& Feature Matrix}
         \tiny
         \begin{tabularx}{\textwidth}{l c c c}
           \toprule
-          \textbf{System} & \textbf{Daemon RSS} & \textbf{Overhead} & \textbf{Loss Model} \\
+          \textbf{Capability} & \textbf{ContainerGuard} & \textbf{Tetragon} & \textbf{Falco} \\
           \midrule
-          \textbf{ContainerGuard} & \textbf{14.2 MiB} & \textbf{+4.71\%} ($10.2\mu$s) & \textbf{100.0\% ($H=S+D$)} \\
-          \textbf{Tetragon} (Lit.) & $\sim 70\text{--}90$ MiB & $\sim 5\text{--}8\%$ ($15.5\mu$s) & Logged Drops \\
-          \textbf{Falco} (Lit.) & $\sim 50\text{--}75$ MiB & $\sim 7\text{--}11\%$ ($20.3\mu$s) & Post-Overrun Drops \\
-          \textbf{Tracee} (Lit.) & $\sim 120\text{--}160$ MiB & $\sim 10\text{--}15\%$ ($26.6\mu$s) & Perf Drops \\
+          \textbf{Kernel Probes} & \textbf{Tracepoints} & Kprobes/LSM & Driver/Tracepoints \\
+          \textbf{Loss Invariant} & \textbf{Formal $H=S+D$} & Buffer Stats & Post-Drop Log \\
+          \textbf{Silent Drops} & \textbf{0.00\% Proven} & Buffer Stats & Overrun Susceptible \\
+          \textbf{Containment} & \textbf{\texttt{NStgid+cgroup.kill}} & In-Kernel LSM & Userspace (Talon) \\
+          \textbf{Storage} & \textbf{Pure SQLite WAL} & External & External \\
+          \textbf{Hot-Reload} & \textbf{SIGHUP (< 2.5 ms)} & Dynamic CRDs & SIGHUP Reload \\
           \bottomrule
         \end{tabularx}
         \vspace{0.1cm}
         \scriptsize
-        \textbf{Scientific Qualification:}
+        \textbf{Design Principles:}
         \begin{itemize}
-          \item \textbf{ContainerGuard:} Live measured v2.0 RSS + Phase I $\Delta t$.
-          \item \textbf{Third-Party:} Published literature \& vendor specifications.
+          \item Grounded strictly in official upstream documentation.
+          \item Zero unexecuted third-party benchmark numbers.
         \end{itemize}
       \end{block}
     \end{column}
 
-    \begin{column}{0.47\textwidth}
+    \begin{column}{0.46\textwidth}
       \begin{exampleblock}{Synthetic Policy Validation}
         \scriptsize
         \textbf{133-Event In-Memory Unit Corpus:}
