@@ -19,6 +19,9 @@ Thumbs.db
 .env
 .env.*
 docs/evidence/*/runs/
+docs/evidence/live_run_*/
+docs/evidence/*.db*
+docs/evidence/*.jsonl
 build/
 *.tar.gz
 
