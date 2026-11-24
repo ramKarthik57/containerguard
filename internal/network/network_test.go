@@ -88,3 +88,53 @@ func TestNetworkCorrelatorMock(t *testing.T) {
 		t.Errorf("Unexpected external endpoints: %v", res.ExternalEndpoints)
 	}
 }
+
+func TestShortLivedProcessNetworkRaceFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	parentTGID := uint32(60000)
+	parentDir := filepath.Join(tmpDir, "60000")
+	pFdDir := filepath.Join(parentDir, "fd")
+	pNetDir := filepath.Join(parentDir, "net")
+
+	if err := os.MkdirAll(pFdDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.MkdirAll(pNetDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+
+	if err := os.Symlink("socket:[77777]", filepath.Join(pFdDir, "3")); err != nil {
+		t.Fatalf("Symlink failed: %v", err)
+	}
+
+	tcpContent := `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 020011AC:AC20 046433C6:115C 01 00000000:00000000 00:00000000 00000000     0        0 77777 1 0000000000000000 100 0 0 10 0
+`
+	if err := os.WriteFile(filepath.Join(pNetDir, "tcp"), []byte(tcpContent), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	correlator := NewCorrelator()
+	correlator.SetProcRoot(tmpDir)
+
+	// Short-lived child process (TGID 60001) whose /proc entry has already vanished
+	childEv := &telemetry.SecurityEvent{
+		TGID:          60001,
+		ParentTGID:    parentTGID,
+		Filename:      "/bin/sh",
+		Comm:          "sh",
+		ContainerID:   "cont-shell-race",
+		ContainerName: "race-container",
+	}
+
+	res := correlator.Correlate(childEv)
+	if !res.HasNetworkSockets {
+		t.Errorf("Expected child to inherit socket correlation from parent during short-lived race")
+	}
+	if !res.PotentialReverseShell {
+		t.Errorf("Expected PotentialReverseShell to be detected via inherited parent socket")
+	}
+	if len(res.ExternalEndpoints) == 0 || res.ExternalEndpoints[0] != "198.51.100.4:4444" {
+		t.Errorf("Expected endpoint 198.51.100.4:4444, got %v", res.ExternalEndpoints)
+	}
+}

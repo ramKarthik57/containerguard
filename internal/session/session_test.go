@@ -102,3 +102,59 @@ func TestSessionInspectorNonInteractive(t *testing.T) {
 		t.Errorf("Expected HasTTY false for /dev/null and pipe")
 	}
 }
+
+func TestShortLivedProcessRaceFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	parentTGID := uint32(50000)
+	parentDir := filepath.Join(tmpDir, "50000")
+	pFdDir := filepath.Join(parentDir, "fd")
+
+	if err := os.MkdirAll(pFdDir, 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+
+	// Parent shell stat
+	pStat := "50000 (bash) S 1000 50000 50000 34816 50000 4194304 123 0 0 0 0 0 0 0 20 0 1 0 1234567 0 0"
+	if err := os.WriteFile(filepath.Join(parentDir, "stat"), []byte(pStat), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	if err := os.Symlink("/dev/pts/5", filepath.Join(pFdDir, "0")); err != nil {
+		t.Fatalf("Symlink failed: %v", err)
+	}
+
+	inspector := NewInspector()
+	inspector.SetProcRoot(tmpDir)
+
+	// Pre-inspect parent so it is cached
+	parentEv := &telemetry.SecurityEvent{
+		TGID:        parentTGID,
+		Filename:    "/bin/bash",
+		Comm:        "bash",
+		ContainerID: "cont-race",
+	}
+	pInfo := inspector.Inspect(parentEv)
+	if !pInfo.HasTTY {
+		t.Fatalf("Parent should have TTY")
+	}
+
+	// Short-lived child process (e.g. whoami) whose /proc/<tgid> does NOT exist
+	childTGID := uint32(50001)
+	childEv := &telemetry.SecurityEvent{
+		TGID:        childTGID,
+		ParentTGID:  parentTGID,
+		Filename:    "/usr/bin/whoami",
+		Comm:        "whoami",
+		ContainerID: "cont-race",
+	}
+
+	childInfo := inspector.Inspect(childEv)
+	if !childInfo.HasTTY {
+		t.Errorf("Expected child to inherit HasTTY true from parent during race condition")
+	}
+	if childInfo.TTYDevice != "/dev/pts/5" {
+		t.Errorf("Expected child TTYDevice /dev/pts/5, got %s", childInfo.TTYDevice)
+	}
+	if !childInfo.IsInteractive {
+		t.Errorf("Expected child to inherit IsInteractive true from parent shell")
+	}
+}

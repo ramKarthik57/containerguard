@@ -85,6 +85,22 @@ func (c *Correlator) Correlate(event *telemetry.SecurityEvent) *CorrelationResul
 	}
 
 	sockets := c.GetProcessSockets(event.TGID)
+	// Short-lived process race condition fallback:
+	// If child exited before /proc/<tgid>/fd was read, check parent TGID
+	if len(sockets) == 0 && event.ParentTGID > 1 {
+		c.mu.RLock()
+		cachedParent, ok := c.socketCache[event.ParentTGID]
+		c.mu.RUnlock()
+		if ok && len(cachedParent) > 0 {
+			sockets = cachedParent
+		} else {
+			parentSockets := c.GetProcessSockets(event.ParentTGID)
+			if len(parentSockets) > 0 {
+				sockets = parentSockets
+			}
+		}
+	}
+
 	res := &CorrelationResult{
 		HasNetworkSockets: len(sockets) > 0,
 		ActiveSockets:     sockets,

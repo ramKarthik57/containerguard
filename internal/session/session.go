@@ -124,6 +124,21 @@ func (i *Inspector) Inspect(event *telemetry.SecurityEvent) SessionInfo {
 		}
 	}
 
+	// 4. Short-Lived Process Race Fallback:
+	// If child exited before /proc/<tgid>/ was read, inherit session/TTY from parent
+	if !info.HasTTY && event.ParentTGID > 1 {
+		i.mu.RLock()
+		parentInfo, parentFound := i.cache[event.ParentTGID]
+		i.mu.RUnlock()
+		if parentFound && parentInfo.HasTTY {
+			info.HasTTY = true
+			info.IsInteractive = parentInfo.IsInteractive
+			info.TTYDevice = parentInfo.TTYDevice
+			info.SessionID = parentInfo.SessionID
+			info.ProcessGroup = parentInfo.ProcessGroup
+		}
+	}
+
 	i.mu.Lock()
 	i.cache[tgid] = info
 	i.cacheTTL[tgid] = time.Now()
