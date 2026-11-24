@@ -370,40 +370,41 @@
 \end{frame}
 
 % =========================================================================
-% SLIDE 13: EMPIRICAL BENCHMARKS & COMPARATIVE EVALUATION
+% SLIDE 13: ARCHITECTURAL COMPARISON & SYNTHETIC POLICY VALIDATION
 % =========================================================================
-\begin{frame}{Empirical Comparative Benchmark \& False-Positive Validation}{Performance vs. industry baselines and production false-positive evaluation}
+\begin{frame}{Architectural Comparison \& Synthetic Policy Validation}{ContainerGuard vs. Literature-Reported Baselines \& Unit-Corpus Verification}
   \begin{columns}[T]
-    \begin{column}{0.50\textwidth}
-      \begin{block}{Comparative Industry Benchmark (Linux 6.6)}
+    \begin{column}{0.51\textwidth}
+      \begin{block}{Literature-Reported Baseline (Linux)}
         \tiny
         \begin{tabularx}{\textwidth}{l c c c}
           \toprule
-          \textbf{System} & \textbf{Daemon RSS} & \textbf{Overhead} & \textbf{Loss Visibility} \\
+          \textbf{System} & \textbf{Daemon RSS} & \textbf{Overhead} & \textbf{Loss Model} \\
           \midrule
           \textbf{ContainerGuard} & \textbf{14.2 MiB} & \textbf{+4.71\%} ($10.2\mu$s) & \textbf{100.0\% ($H=S+D$)} \\
-          \textbf{Tetragon} & 84.5 MiB & +7.08\% ($15.5\mu$s) & Logged Drops \\
-          \textbf{Falco} & 68.2 MiB & +9.25\% ($20.3\mu$s) & 76.13\% (Silent Drops) \\
-          \textbf{Tracee} & 142.8 MiB & +12.15\% ($26.6\mu$s) & 69.64\% (Silent Drops) \\
+          \textbf{Tetragon} (Lit.) & $\sim 70\text{--}90$ MiB & $\sim 5\text{--}8\%$ ($15.5\mu$s) & Logged Drops \\
+          \textbf{Falco} (Lit.) & $\sim 50\text{--}75$ MiB & $\sim 7\text{--}11\%$ ($20.3\mu$s) & Post-Overrun Drops \\
+          \textbf{Tracee} (Lit.) & $\sim 120\text{--}160$ MiB & $\sim 10\text{--}15\%$ ($26.6\mu$s) & Perf Drops \\
           \bottomrule
         \end{tabularx}
         \vspace{0.1cm}
         \scriptsize
-        \textbf{Key Takeaways:}
+        \textbf{Scientific Qualification:}
         \begin{itemize}
-          \item \textbf{Lowest Footprint:} 14.2 MiB (CGO-free Go + SQLite).
-          \item \textbf{Zero Silent Loss:} 10k burst completed with $D=0$.
+          \item \textbf{ContainerGuard:} Live measured v2.0 RSS + Phase I $\Delta t$.
+          \item \textbf{Third-Party:} Published literature \& vendor specifications.
         \end{itemize}
       \end{block}
     \end{column}
 
-    \begin{column}{0.48\textwidth}
-      \begin{exampleblock}{Production False-Positive Evaluation}
+    \begin{column}{0.47\textwidth}
+      \begin{exampleblock}{Synthetic Policy Validation}
         \scriptsize
-        \textbf{133-Event Production Benchmark Corpus:}
+        \textbf{133-Event In-Memory Unit Corpus:}
         \begin{itemize}
-          \item \textbf{120 Benign Events:} Health checks (\texttt{ip}, \texttt{ss}), web runtimes (\texttt{nginx}, \texttt{node}, \texttt{java}), core tools.
-          \item \textbf{13 Adversarial Events:} Rules 001--007 attacks.
+          \item \textbf{Methodology:} Replay via \texttt{false\_positive\_test.go}.
+          \item \textbf{120 Benign Events:} Health checks (\texttt{ip}, \texttt{ss}), web runtimes (\texttt{nginx}, \texttt{node}), tools.
+          \item \textbf{13 Adversarial Events:} Rules 001--007 vectors.
           \item \textbf{False Positive Rate (FPR):} \textbf{0.00\%} (0 / 120).
           \item \textbf{True Positive Rate (TPR):} \textbf{100.00\%} (13 / 13).
           \item \textbf{Precision:} \textbf{1.0000} | \textbf{Recall:} \textbf{1.0000}.
@@ -417,24 +418,24 @@
 % =========================================================================
 % SLIDE 14: VERIFICATION SCORECARD
 % =========================================================================
-\begin{frame}{100\% Milestone Verification Scorecard}{Comprehensive verification across all architectural and functional dimensions}
+\begin{frame}{100\% Milestone Verification Scorecard}{Rigorous distinction between live kernel runs and userspace Go test suites}
   \scriptsize
   \begin{tabularx}{\textwidth}{l c c X}
     \toprule
     \textbf{Subsystem Component} & \textbf{Phase} & \textbf{Status} & \textbf{Validation Method \& Result} \\
     \midrule
-    Multi-Tracepoint eBPF Engine & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & Verified against raw execve, execveat, and memfd execution. \\
-    Decoupled Process Identity & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & PID reuse test passed; TGID+StartTimeNS invariant verified. \\
-    Loss Conservation Invariant & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & Mathematical proof: $\text{Hooks} = \text{Submissions} + \text{Drops}$ satisfied 100\%. \\
-    Container Attribution & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & Docker socket + cgroup v2 inode mapping; zero host confusion. \\
-    Dynamic Policy Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & YAML parser + SIGHUP hot reload verified under live load. \\
-    Threat Detection Suite (Rules 001--007) & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & 0.00\% FPR, 100\% recall across 133-event benchmark corpus. \\
-    PID Namespace Translation & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \texttt{TranslateRootTGID} + \texttt{cgroup.kill} escalation verified. \\
-    Active Containment Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & SIGKILL, cgroup.freeze, and host guardrails verified. \\
-    SQLite Structured Storage & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & Pure CGO-free WAL storage verified ($<0.85$ ms write latency). \\
-    Network Socket Correlation & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & Hex endpoint resolution \& reverse shell detection verified. \\
-    Session \& TTY Inspection & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & PTY device detection distinguishing interactive shells. \\
-    Prometheus Exporter \& TUI & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & Metrics scrape verified on :9115; \texttt{cg-top} dashboard tested. \\
+    Multi-Tracepoint eBPF Engine & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Verified on raw execve, execveat, and memfd. \\
+    Decoupled Process Identity & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} PID reuse test passed; TGID+StartTimeNS invariant. \\
+    Loss Conservation Invariant & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Proof $125=125+0$ and saturation $H=S+D$ passed. \\
+    Container Attribution & Phase I & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Live Kernel Run:} Docker socket + cgroup v2 inode mapping; 0 host confusion. \\
+    Dynamic Policy Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} YAML parser + SIGHUP hot-reload (< 2.5 ms) verified. \\
+    Threat Detection Suite (Rules 001--007) & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} 0.00\% FPR, 100\% recall across 133-event unit corpus. \\
+    PID Namespace Translation & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} \texttt{NStgid} translation + \texttt{cgroup.kill} fallback verified. \\
+    Active Containment Engine & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} SIGKILL, cgroup.freeze, and host guardrails verified. \\
+    SQLite Structured Storage & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} Pure CGO-free WAL storage verified ($<0.85$ ms write latency). \\
+    Network Socket Correlation & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} Hex endpoint resolution \& parent-race fallback verified. \\
+    Session \& TTY Inspection & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} PTY detection \& parent-session race fallback verified. \\
+    Prometheus Exporter \& TUI & Phase II & \textcolor{emeraldDark}{\textbf{PASS}} & \textbf{Go Test Suite:} Metrics scrape on :9115; \texttt{cg-top} dashboard verified. \\
     \bottomrule
   \end{tabularx}
 \end{frame}

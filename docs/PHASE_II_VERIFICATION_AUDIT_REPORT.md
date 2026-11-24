@@ -14,10 +14,16 @@
 
 During Phase I (the 50% Verified Milestone, Commit `b8f70f5`), ContainerGuard demonstrated zero silent telemetry loss ($H = S + D$), deterministic lineage reconstruction, and initial container escape detection across PRs #1–#18.
 
-**Phase II (Enterprise v2.0)** transitions ContainerGuard from a read-only detection prototype into an active, enterprise-grade container detection and response (CDR) system. This comprehensive audit report provides empirical validation, live kernel verification data, and architectural documentation for the complete Phase II capabilities:
+**Phase II (Enterprise v2.0)** transitions ContainerGuard from a read-only detection prototype into an active, enterprise-grade container detection and response (CDR) system. This comprehensive audit report provides empirical validation, live kernel verification data, and architectural documentation for the complete Phase II capabilities.
+
+> [!IMPORTANT]
+> **Scientific Methodology Qualification:**
+> - **Live Kernel Execution (Phase I Baseline):** The foundational eBPF probe, 5 kernel tracepoint hooks, process identity decoupling, and the loss invariant ($125 = 125 + 0$, with 0 sequence gaps) are backed by live WSL2 kernel runs, cryptographic archive `containerguard-phaseI-run.tar.gz` (SHA-256: `53e30c...`), and saturation stress tests (2,105 to 25,032 events).
+> - **Userspace Policy & Mitigation Verification (Phase II Modules):** The expanded rule engine (Rules 001–007), PID namespace translation (`TranslateRootTGID`), active containment escalation (`cgroup.kill`), parent-fallback procfs enrichment, SQLite WAL storage, and Prometheus exporter are verified via comprehensive Go unit and benchmark suites across all 11 Go packages (`go test -v ./...`), utilizing in-memory synthetic struct replay and mock procfs/cgroup hierarchies.
+
 1. **Namespace-Aware Active Containment Engine (`internal/mitigation`):** Proactive PID namespace translation via `/proc/<pid>/status` `NStgid` traversal, coupled with kernel-level `cgroup.kill` and `cgroup.freeze` escalation.
 2. **Threat Detection Suite & MITRE ATT&CK Mapping (`internal/detection`):** Full deterministic coverage for Rules `CG-RULE-001` through `CG-RULE-007`.
-3. **Empirical False-Positive Validation:** Rigorous evaluation against a 133-event production corpus (120 benign workloads including Kubernetes health checks, package managers, and web servers + 13 adversarial vectors), proving **0.00% False Positive Rate (FPR)** and **100.00% True Positive Rate (TPR)**.
+3. **Synthetic False-Positive Validation:** In-memory evaluation against a 133-event production corpus (120 benign workloads including Kubernetes health checks, package managers, and web servers + 13 adversarial vectors), proving **0.00% False Positive Rate (FPR)** and **100.00% True Positive Rate (TPR)**.
 4. **Embedded Structured Evidence Engine (`internal/storage`):** Pure CGO-free SQLite storage (`modernc.org/sqlite`) operating in Write-Ahead Logging (WAL) mode.
 5. **Multi-Sink Observability & Prometheus Server (`internal/export`):** Real-time `/metrics` endpoint exposing the mathematical loss invariant (`containerguard_loss_invariant_satisfied`).
 6. **Dynamic Policy Hot-Reload (`internal/policy`):** SIGHUP-triggered atomic policy reloading with sub-millisecond reconfiguration time (< 2.5 ms) without event loss.
@@ -115,11 +121,13 @@ ContainerGuard implements seven deterministic intrusion detection rules mapped d
 
 ---
 
-## 5. False-Positive Evaluation (133-Event Corpus)
+## 5. Synthetic Policy False-Positive Benchmark (133-Event Corpus)
 
-To prove that ContainerGuard does not overwhelm security operations centers (SOCs) with spurious alerts, the engine was benchmarked against a 133-event workload corpus:
+To verify that ContainerGuard's detection logic does not generate false positives on routine operations, the rule engine was evaluated in memory (`internal/detection/false_positive_test.go`) against a 133-event workload corpus:
 - **120 Benign Events:** Web servers (`nginx`, `envoy`), language runtimes (`python3`, `node`, `java`), databases (`postgres`, `redis-server`), routine diagnostics (`curl`, `wget`, `cat`, `grep`, `awk`, `sed`, `sleep`), package managers (`apt-get`, `dpkg`, `apk`), build utilities (`make`, `gcc`), and routine container health check tools (`ip`, `ss`, `netstat`).
 - **13 Adversarial Events:** Concrete attack vectors triggering Rules 001 through 007.
+
+> **Methodology Qualification:** This evaluation reflects a unit-level policy benchmark conducted by passing synthetic `telemetry.SecurityEvent` structures into `engine.Evaluate()`. It verifies deterministic rule matching, thresholds, and condition logic in memory without invoking live kernel eBPF probes or container workloads.
 
 ### Empirical Results:
 ```text
