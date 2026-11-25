@@ -303,14 +303,14 @@
           <p class="text-xs text-slate-500">Query live evidence directly from <code class="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">docs/evidence/containerguard_evidence.db</code>.</p>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="runQuery('SELECT id, rule_id, title, severity, action, container_id FROM alerts ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Alerts</button>
+          <button onclick="runQuery('SELECT id, rule_id, title, severity, action, container_name FROM alerts ORDER BY seq_num DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Alerts</button>
           <button onclick="runQuery('SELECT id, rule_id, action_taken, tgid, success, message FROM mitigations ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Mitigations</button>
-          <button onclick="runQuery('SELECT id, comm, container_name, cgroup_path FROM events ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Events</button>
+          <button onclick="runQuery('SELECT seq_num, comm, filename, container_name FROM events ORDER BY seq_num DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Events</button>
         </div>
       </div>
 
       <div class="mt-4 flex gap-2">
-        <input type="text" id="sql-input" value="SELECT id, rule_id, title, severity, action FROM alerts ORDER BY id DESC LIMIT 5;" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white shadow-xs">
+        <input type="text" id="sql-input" value="SELECT id, rule_id, title, severity, action, container_name FROM alerts ORDER BY seq_num DESC LIMIT 5;" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white shadow-xs">
         <button onclick="executeCustomQuery()" class="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition shadow-xs">Execute SQL</button>
       </div>
 

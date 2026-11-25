@@ -382,30 +382,26 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.db != nil {
-		rows, err := s.db.Query(`SELECT id, timestamp_ns, pid, tgid, comm, nodename, container_id, container_name, cgroup_path, return_val, flags FROM events ORDER BY id DESC LIMIT ?`, limit)
+		rows, err := s.db.Query(`SELECT seq_num, timestamp_ns, tgid, comm, filename, container_id, container_name FROM events ORDER BY seq_num DESC LIMIT ?`, limit)
 		if err == nil {
 			defer rows.Close()
 			var events []map[string]interface{}
 			for rows.Next() {
-				var id int64
+				var seq int64
 				var ts int64
-				var pid, tgid uint32
-				var comm, nodename, cid, cname, cpath string
-				var ret int32
-				var flags uint32
-				rows.Scan(&id, &ts, &pid, &tgid, &comm, &nodename, &cid, &cname, &cpath, &ret, &flags)
+				var tgid uint32
+				var comm, filename, cid, cname string
+				rows.Scan(&seq, &ts, &tgid, &comm, &filename, &cid, &cname)
 				events = append(events, map[string]interface{}{
-					"id":             id,
+					"id":             seq,
+					"seq_num":        seq,
 					"timestamp_ns":   ts,
-					"pid":            pid,
+					"pid":            tgid,
 					"tgid":           tgid,
 					"comm":           comm,
-					"nodename":       nodename,
+					"filename":       filename,
 					"container_id":   cid,
 					"container_name": cname,
-					"cgroup_path":    cpath,
-					"return_val":     ret,
-					"flags":          flags,
 				})
 			}
 			json.NewEncoder(w).Encode(events)
@@ -438,26 +434,24 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if s.db != nil {
-		rows, err := s.db.Query(`SELECT id, event_id, rule_id, title, severity, action, container_id, timestamp_ns, details FROM alerts ORDER BY id DESC LIMIT 50`)
+		rows, err := s.db.Query(`SELECT id, seq_num, rule_id, title, severity, action, container_id, container_name, timestamp FROM alerts ORDER BY seq_num DESC LIMIT 50`)
 		if err == nil {
 			defer rows.Close()
 			var alerts []map[string]interface{}
 			for rows.Next() {
-				var id string
-				var eventID int64
-				var ruleID, title, severity, action, cid, details string
-				var ts int64
-				rows.Scan(&id, &eventID, &ruleID, &title, &severity, &action, &cid, &ts, &details)
+				var id, ruleID, title, severity, action, cid, cname, ts string
+				var seq int64
+				rows.Scan(&id, &seq, &ruleID, &title, &severity, &action, &cid, &cname, &ts)
 				alerts = append(alerts, map[string]interface{}{
-					"id":           id,
-					"event_id":     eventID,
-					"rule_id":      ruleID,
-					"title":        title,
-					"severity":     severity,
-					"action":       action,
-					"container_id": cid,
-					"timestamp_ns": ts,
-					"details":      details,
+					"id":             id,
+					"seq_num":        seq,
+					"rule_id":        ruleID,
+					"title":          title,
+					"severity":       severity,
+					"action":         action,
+					"container_id":   cid,
+					"container_name": cname,
+					"timestamp":      ts,
 				})
 			}
 			json.NewEncoder(w).Encode(alerts)
@@ -485,27 +479,27 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMitigations(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if s.db != nil {
-		rows, err := s.db.Query(`SELECT id, alert_id, rule_id, action_taken, target_type, tgid, cgroup_path, timestamp_ns, success, message FROM mitigations ORDER BY id DESC LIMIT 50`)
+		rows, err := s.db.Query(`SELECT id, alert_id, rule_id, action_taken, mode, container_id, container_name, tgid, success, message, timestamp FROM mitigations ORDER BY id DESC LIMIT 50`)
 		if err == nil {
 			defer rows.Close()
 			var mitigations []map[string]interface{}
 			for rows.Next() {
-				var id, alertID, ruleID, actionTaken, targetType, cpath, message string
+				var id, alertID, ruleID, actionTaken, mode, cid, cname, message, ts string
 				var tgid uint32
-				var ts int64
 				var success int
-				rows.Scan(&id, &alertID, &ruleID, &actionTaken, &targetType, &tgid, &cpath, &ts, &success, &message)
+				rows.Scan(&id, &alertID, &ruleID, &actionTaken, &mode, &cid, &cname, &tgid, &success, &message, &ts)
 				mitigations = append(mitigations, map[string]interface{}{
-					"id":           id,
-					"alert_id":     alertID,
-					"rule_id":      ruleID,
-					"action_taken": actionTaken,
-					"target_type":  targetType,
-					"tgid":         tgid,
-					"cgroup_path":  cpath,
-					"timestamp_ns": ts,
-					"success":      success == 1,
-					"message":      message,
+					"id":             id,
+					"alert_id":       alertID,
+					"rule_id":        ruleID,
+					"action_taken":   actionTaken,
+					"mode":           mode,
+					"container_id":   cid,
+					"container_name": cname,
+					"tgid":           tgid,
+					"success":        success == 1,
+					"message":        message,
+					"timestamp":      ts,
 				})
 			}
 			json.NewEncoder(w).Encode(mitigations)
