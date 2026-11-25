@@ -756,6 +756,11 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	indexPath := filepath.Join(s.cfg.RootDir, "cmd/cg-web/index.html")
+	if data, err := os.ReadFile(indexPath); err == nil {
+		w.Write(data)
+		return
+	}
 	w.Write([]byte(htmlTemplate))
 }
 

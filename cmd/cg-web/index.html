@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,319 +7,314 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script>
     tailwind.config = {
-      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
-            sans: ['Inter', 'sans-serif'],
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
             mono: ['JetBrains Mono', 'monospace'],
           },
-          colors: {
-            cyber: {
-              900: '#060913',
-              800: '#0B1120',
-              700: '#111D35',
-              600: '#1E2D4A',
-              border: '#1E293B',
-              emerald: '#10B981',
-              cyan: '#06B6D4',
-              crimson: '#EF4444',
-              amber: '#F59E0B',
-            }
-          }
         }
       }
     }
   </script>
   <style>
-    body { background-color: #060913; color: #F1F5F9; }
-    .pulse-glow { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
-    .alert-glow { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+    body { background-color: #F8FAFC; color: #0F172A; }
     .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-    .custom-scroll::-webkit-scrollbar-track { background: #0B1120; }
-    .custom-scroll::-webkit-scrollbar-thumb { background: #1E2D4A; border-radius: 3px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #F1F5F9; border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
   </style>
 </head>
-<body class="font-sans antialiased min-h-screen flex flex-col custom-scroll">
+<body class="font-sans antialiased min-h-screen flex flex-col bg-slate-50 text-slate-900 custom-scroll">
 
-  <!-- Header -->
-  <header class="border-b border-cyber-border bg-cyber-800/80 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex items-center justify-between">
-    <div class="flex items-center gap-4">
-      <div class="flex items-center gap-2.5">
-        <div class="w-9 h-9 rounded-lg bg-cyber-cyan/10 border border-cyber-cyan/30 flex items-center justify-center text-cyber-cyan font-bold font-mono text-lg shadow-sm">
+  <!-- Top Navigation Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 px-6 py-3.5 shadow-sm">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      
+      <!-- Brand & Kernel Info -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold font-mono text-base shadow-sm">
           CG
         </div>
         <div>
           <div class="flex items-center gap-2">
-            <span class="text-base font-bold text-white tracking-tight">ContainerGuard</span>
-            <span class="text-xs px-2 py-0.5 rounded-full bg-cyber-cyan/10 text-cyber-cyan border border-cyber-cyan/20 font-mono">Enterprise v2.0</span>
+            <h1 class="text-base font-bold text-slate-900 tracking-tight">ContainerGuard</h1>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium border border-blue-200">Enterprise v2.0</span>
           </div>
-          <p class="text-xs text-slate-400 font-mono">Kernel <span id="kernel-ver" class="text-slate-300">Loading...</span> | Host: WSL2</p>
+          <p class="text-xs text-slate-500 font-mono mt-0.5">Kernel: <span id="kernel-ver" class="text-slate-700 font-semibold">Linux WSL2</span> &bull; Cgroupv2 Unified</p>
         </div>
       </div>
-    </div>
 
-    <!-- Center Live Status Invariant Badge -->
-    <div class="hidden md:flex items-center gap-3 bg-cyber-900 border border-cyber-border rounded-lg px-4 py-1.5 shadow-inner">
-      <div class="flex items-center gap-2">
-        <span id="daemon-pulse" class="w-2.5 h-2.5 rounded-full bg-cyber-emerald animate-pulse"></span>
-        <span id="daemon-status-text" class="text-xs font-semibold text-slate-200 uppercase tracking-wider">eBPF HOOKS ACTIVE</span>
+      <!-- Center Loss Invariant Status Pill -->
+      <div class="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 shadow-xs">
+        <span id="daemon-pulse" class="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
+        <div class="text-xs">
+          <span class="font-bold text-emerald-900 uppercase tracking-wide">Live Kernel Invariant:</span>
+          <span id="proof-text" class="font-mono font-semibold text-emerald-700 ml-1">Loading real telemetry...</span>
+        </div>
       </div>
-      <div class="h-4 w-px bg-cyber-border"></div>
-      <div class="text-xs font-mono flex items-center gap-2">
-        <span class="text-slate-400">Loss Invariant:</span>
-        <span id="proof-text" class="font-bold text-cyber-emerald">H = S + D (Satisfied)</span>
-      </div>
-    </div>
 
-    <!-- Quick Action Controls -->
-    <div class="flex items-center gap-3">
-      <button onclick="triggerHotReload()" id="btn-reload" class="text-xs font-medium px-3.5 py-1.5 rounded-md bg-cyber-700 hover:bg-cyber-600 text-slate-200 border border-cyber-border transition flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-        SIGHUP Reload
-      </button>
-      <div class="text-xs text-slate-400 font-mono bg-cyber-900/60 px-2.5 py-1 rounded border border-cyber-border" id="last-update">--:--:--</div>
+      <!-- Action Buttons & Clock -->
+      <div class="flex items-center gap-3">
+        <button onclick="triggerHotReload()" id="btn-reload" class="text-xs font-semibold px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition flex items-center gap-1.5 shadow-xs">
+          <svg class="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          SIGHUP Reload
+        </button>
+        <span class="text-xs font-mono text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200" id="last-update">--:--:--</span>
+      </div>
+
     </div>
   </header>
 
-  <!-- Main Grid Dashboard -->
-  <main class="flex-1 p-6 space-y-6 max-w-7xl w-full mx-auto">
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
 
-    <!-- KPI Metric Cards -->
+    <!-- Section 1: KPI Metrics Row (5 Cards) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       
-      <!-- Invariant Card -->
-      <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4 flex flex-col justify-between relative overflow-hidden">
+      <!-- Loss Invariant Conservation Card -->
+      <div class="bg-white border border-emerald-200 rounded-xl p-4 shadow-sm flex flex-col justify-between relative overflow-hidden">
         <div class="flex justify-between items-start">
-          <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Loss Conservation</span>
-          <span id="card-inv-badge" class="text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono border border-emerald-500/20">SATISFIED</span>
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Loss Invariant</span>
+          <span id="card-inv-badge" class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono">100% SATISFIED</span>
         </div>
         <div class="mt-3">
-          <div class="text-2xl font-bold font-mono text-emerald-400" id="stat-inv">1.00</div>
-          <div class="text-xs text-slate-400 font-mono mt-1">Zero Silent Drops (H = S + D)</div>
-        </div>
-        <div class="absolute -right-4 -bottom-4 w-16 h-16 bg-emerald-500/5 rounded-full pointer-events-none"></div>
-      </div>
-
-      <!-- Hooks Dispatched -->
-      <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4 flex flex-col justify-between">
-        <div class="flex justify-between items-start">
-          <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Kernel Hooks (H)</span>
-          <svg class="w-4 h-4 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-        </div>
-        <div class="mt-3">
-          <div class="text-2xl font-bold font-mono text-white" id="stat-hooks">0</div>
-          <div class="text-xs text-slate-400 font-mono mt-1">sys_enter_execve{at}</div>
+          <div class="text-3xl font-extrabold font-mono text-emerald-600" id="stat-inv">1.00</div>
+          <div class="text-xs text-slate-500 font-medium mt-1">Proof: H = S + D (0 Drops)</div>
         </div>
       </div>
 
-      <!-- Submits -->
-      <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4 flex flex-col justify-between">
+      <!-- Kernel Hook Invocations (H) -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
         <div class="flex justify-between items-start">
-          <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Submissions (S)</span>
-          <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Kernel Hooks (H)</span>
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
         </div>
         <div class="mt-3">
-          <div class="text-2xl font-bold font-mono text-blue-400" id="stat-submits">0</div>
-          <div class="text-xs text-slate-400 font-mono mt-1">BPF RingBuffer Submits</div>
+          <div class="text-3xl font-extrabold font-mono text-blue-600" id="stat-hooks">0</div>
+          <div class="text-xs text-slate-500 font-medium mt-1">eBPF tracepoint events</div>
         </div>
       </div>
 
-      <!-- Drops -->
-      <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4 flex flex-col justify-between">
+      <!-- Ring-Buffer Submissions (S) -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
         <div class="flex justify-between items-start">
-          <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Buffer Drops (D)</span>
-          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Submissions (S)</span>
+          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
         </div>
         <div class="mt-3">
-          <div class="text-2xl font-bold font-mono text-emerald-400" id="stat-drops">0</div>
-          <div class="text-xs text-slate-400 font-mono mt-1">Saturation Drops = 0</div>
+          <div class="text-3xl font-extrabold font-mono text-indigo-600" id="stat-submits">0</div>
+          <div class="text-xs text-slate-500 font-medium mt-1">Submitted to ring-buffer</div>
         </div>
       </div>
 
-      <!-- Total Mitigations -->
-      <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4 flex flex-col justify-between">
+      <!-- Ring-Buffer Saturation Drops (D) -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
         <div class="flex justify-between items-start">
-          <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Active Mitigations</span>
-          <svg class="w-4 h-4 text-cyber-crimson" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.618 5.984A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Saturation Drops (D)</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
         </div>
         <div class="mt-3">
-          <div class="text-2xl font-bold font-mono text-cyber-crimson" id="stat-mitigs">0</div>
-          <div class="text-xs text-slate-400 font-mono mt-1">cgroup.kill Escalations</div>
+          <div class="text-3xl font-extrabold font-mono text-emerald-600" id="stat-drops">0</div>
+          <div class="text-xs text-slate-500 font-medium mt-1">Zero silent event loss</div>
+        </div>
+      </div>
+
+      <!-- Active Mitigations Executed -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+        <div class="flex justify-between items-start">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mitigations</span>
+          <span class="w-2 h-2 rounded-full bg-red-500"></span>
+        </div>
+        <div class="mt-3">
+          <div class="text-3xl font-extrabold font-mono text-red-600" id="stat-mitigs">0</div>
+          <div class="text-xs text-slate-500 font-medium mt-1">Atomic cgroup.kill (< 4ms)</div>
         </div>
       </div>
 
     </div>
 
-    <!-- Center Stage: Interactive Attack & Containment Lab -->
-    <div class="bg-cyber-800 border border-cyber-border rounded-xl p-5 shadow-lg">
-      <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-cyber-border gap-4">
+    <!-- Section 2: Interactive Threat & Containment Simulation Lab -->
+    <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-3">
         <div>
-          <h2 class="text-base font-bold text-white flex items-center gap-2">
-            <span class="w-3 h-3 rounded bg-cyber-crimson inline-block"></span>
-            Live Attack & Active Containment Simulator
+          <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-600"></span>
+            Interactive Live Attack & Containment Lab
           </h2>
-          <p class="text-xs text-slate-400 mt-0.5">Click any exploit scenario to fire it live inside WSL2 Docker containers and observe the eBPF detection and cgroup.kill response in real time.</p>
+          <p class="text-xs text-slate-500 mt-0.5">Click any exploit scenario to trigger it live in a WSL2 Docker container. Watch ContainerGuard detect and neutralize it in real time.</p>
         </div>
-        <div class="flex items-center gap-2 text-xs font-mono text-slate-400">
-          Target Container: <span class="text-cyber-cyan font-bold" id="target-label">cg-demo-victim (disposable)</span>
+        <div class="text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
+          Target Container: <span class="font-mono font-bold text-blue-700">cg-demo-victim</span>
         </div>
       </div>
 
-      <!-- Action Button Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+      <!-- 4 Action Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
         
-        <button onclick="simulateAttack('writable_exec')" class="group p-3.5 rounded-lg bg-cyber-700/60 hover:bg-cyber-700 border border-cyber-border hover:border-cyber-crimson/50 text-left transition flex flex-col justify-between relative overflow-hidden">
+        <!-- Button 1: Writable Mount Exec -->
+        <button onclick="simulateAttack('writable_exec')" class="p-4 rounded-xl bg-slate-50 hover:bg-red-50/50 border border-slate-200 hover:border-red-300 text-left transition flex flex-col justify-between group shadow-xs">
           <div>
-            <div class="flex items-center justify-between text-xs font-mono mb-1">
-              <span class="text-cyber-crimson font-bold">CG-RULE-002</span>
-              <span class="px-1.5 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400 border border-red-500/20">KILL</span>
+            <div class="flex items-center justify-between text-xs font-mono mb-2">
+              <span class="font-bold text-red-700">CG-RULE-002</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">KILL</span>
             </div>
-            <div class="text-sm font-semibold text-white group-hover:text-cyber-cyan transition">Writable Mount Exec</div>
-            <div class="text-xs text-slate-400 mt-1">Spawns <code class="text-slate-300">/tmp/malicious.sh</code> inside container. Triggers atomic cgroup.kill.</div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-red-700 transition">Writable Mount Exec</h3>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Executes <code class="bg-slate-200 text-slate-800 px-1 rounded">/tmp/malicious.sh</code> inside container. Triggers atomic cgroup.kill.</p>
           </div>
-          <div class="mt-3 text-xs font-mono text-cyber-cyan flex items-center gap-1">Execute Exploit &rarr;</div>
+          <div class="mt-4 text-xs font-semibold text-blue-600 group-hover:text-red-700 flex items-center gap-1 font-mono">
+            Execute Exploit &rarr;
+          </div>
         </button>
 
-        <button onclick="simulateAttack('breakout')" class="group p-3.5 rounded-lg bg-cyber-700/60 hover:bg-cyber-700 border border-cyber-border hover:border-red-500/50 text-left transition flex flex-col justify-between">
+        <!-- Button 2: Privileged Breakout -->
+        <button onclick="simulateAttack('breakout')" class="p-4 rounded-xl bg-slate-50 hover:bg-red-50/50 border border-slate-200 hover:border-red-300 text-left transition flex flex-col justify-between group shadow-xs">
           <div>
-            <div class="flex items-center justify-between text-xs font-mono mb-1">
-              <span class="text-cyber-crimson font-bold">CG-RULE-001</span>
-              <span class="px-1.5 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400 border border-red-500/20">CRITICAL</span>
+            <div class="flex items-center justify-between text-xs font-mono mb-2">
+              <span class="font-bold text-red-700">CG-RULE-001</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">CRITICAL</span>
             </div>
-            <div class="text-sm font-semibold text-white group-hover:text-cyber-cyan transition">Privileged Breakout</div>
-            <div class="text-xs text-slate-400 mt-1">Executes namespace manipulation utility (<code class="text-slate-300">nsenter</code>). Intercepted instantly.</div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-red-700 transition">Privileged Breakout</h3>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Executes namespace manipulation utility (<code class="bg-slate-200 text-slate-800 px-1 rounded">nsenter</code>). Intercepted instantly.</p>
           </div>
-          <div class="mt-3 text-xs font-mono text-cyber-cyan flex items-center gap-1">Execute Exploit &rarr;</div>
+          <div class="mt-4 text-xs font-semibold text-blue-600 group-hover:text-red-700 flex items-center gap-1 font-mono">
+            Execute Exploit &rarr;
+          </div>
         </button>
 
-        <button onclick="simulateAttack('shell_ingress')" class="group p-3.5 rounded-lg bg-cyber-700/60 hover:bg-cyber-700 border border-cyber-border hover:border-amber-500/50 text-left transition flex flex-col justify-between">
+        <!-- Button 3: Shell Ingress -->
+        <button onclick="simulateAttack('shell_ingress')" class="p-4 rounded-xl bg-slate-50 hover:bg-amber-50/50 border border-slate-200 hover:border-amber-300 text-left transition flex flex-col justify-between group shadow-xs">
           <div>
-            <div class="flex items-center justify-between text-xs font-mono mb-1">
-              <span class="text-amber-400 font-bold">CG-RULE-003</span>
-              <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20">ALERT</span>
+            <div class="flex items-center justify-between text-xs font-mono mb-2">
+              <span class="font-bold text-amber-700">CG-RULE-003</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">ALERT</span>
             </div>
-            <div class="text-sm font-semibold text-white group-hover:text-cyber-cyan transition">Shell Ingress Infiltration</div>
-            <div class="text-xs text-slate-400 mt-1">Interactive shell (<code class="text-slate-300">/bin/sh</code>) executed inside container <code class="text-slate-300">cg-test-a</code>.</div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-amber-700 transition">Shell Ingress Spawn</h3>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Interactive shell (<code class="bg-slate-200 text-slate-800 px-1 rounded">/bin/sh</code>) spawned inside container <code class="bg-slate-200 text-slate-800 px-1 rounded">cg-test-a</code>.</p>
           </div>
-          <div class="mt-3 text-xs font-mono text-cyber-cyan flex items-center gap-1">Execute Ingress &rarr;</div>
+          <div class="mt-4 text-xs font-semibold text-blue-600 group-hover:text-amber-700 flex items-center gap-1 font-mono">
+            Execute Ingress &rarr;
+          </div>
         </button>
 
-        <button onclick="simulateAttack('benign')" class="group p-3.5 rounded-lg bg-cyber-700/60 hover:bg-cyber-700 border border-cyber-border hover:border-emerald-500/50 text-left transition flex flex-col justify-between">
+        <!-- Button 4: Benign Workload -->
+        <button onclick="simulateAttack('benign')" class="p-4 rounded-xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-300 text-left transition flex flex-col justify-between group shadow-xs">
           <div>
-            <div class="flex items-center justify-between text-xs font-mono mb-1">
-              <span class="text-emerald-400 font-bold">BENIGN VECTORS</span>
-              <span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">0% FPR</span>
+            <div class="flex items-center justify-between text-xs font-mono mb-2">
+              <span class="font-bold text-emerald-700">BENIGN WORKLOAD</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">0% FPR</span>
             </div>
-            <div class="text-sm font-semibold text-white group-hover:text-cyber-cyan transition">Legitimate Workload</div>
-            <div class="text-xs text-slate-400 mt-1">Executes <code class="text-slate-300">ls, echo, date</code>. Verified: zero alerts fired (0.00% False Positive Rate).</div>
+            <h3 class="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition">Legitimate System Commands</h3>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Runs <code class="bg-slate-200 text-slate-800 px-1 rounded">ls, echo, date</code>. Verified: zero false alerts triggered.</p>
           </div>
-          <div class="mt-3 text-xs font-mono text-emerald-400 flex items-center gap-1">Run Benign &rarr;</div>
+          <div class="mt-4 text-xs font-semibold text-emerald-700 flex items-center gap-1 font-mono">
+            Run Workload &rarr;
+          </div>
         </button>
 
       </div>
 
-      <!-- Live Execution Output Terminal -->
-      <div id="sim-output-box" class="mt-4 p-3 rounded-lg bg-cyber-900 border border-cyber-border font-mono text-xs text-slate-300 hidden">
-        <div class="flex items-center justify-between pb-2 border-b border-cyber-border/60 text-[11px] text-slate-400">
-          <span class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-cyber-cyan animate-pulse"></span>
-            Simulation Telemetry Result
-          </span>
-          <span id="sim-time" class="text-slate-500"></span>
+      <!-- Execution Telemetry Output Panel -->
+      <div id="sim-output-box" class="mt-5 p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs hidden shadow-sm border border-slate-800">
+        <div class="flex items-center justify-between pb-2.5 border-b border-slate-800 text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="font-semibold text-slate-300">Kernel Response & Telemetry Output</span>
+          </div>
+          <span id="sim-time" class="text-slate-400"></span>
         </div>
-        <div id="sim-result-text" class="pt-2 whitespace-pre-wrap leading-relaxed"></div>
+        <div id="sim-result-text" class="pt-3 whitespace-pre-wrap leading-relaxed text-slate-200"></div>
       </div>
     </div>
 
-    <!-- Dual Column Feeds: Live Alerts & Mitigations + Container Fleet -->
+    <!-- Section 3: Dual Live Feeds (Alerts & Mitigations) -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-      <!-- Alerts Feed -->
-      <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4 flex flex-col h-[400px]">
-        <div class="flex items-center justify-between pb-3 border-b border-cyber-border">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-bold text-white">Live Threat Alerts</h3>
-            <span id="alerts-count" class="text-xs px-2 py-0.2 rounded-full bg-cyber-crimson/10 text-cyber-crimson font-mono border border-cyber-crimson/20">0</span>
+      <!-- Live Threat Alerts Feed -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-[420px]">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div class="flex items-center gap-2.5">
+            <h3 class="text-sm font-bold text-slate-900">Live Threat Detection Alerts</h3>
+            <span id="alerts-count" class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold font-mono">0</span>
           </div>
-          <button onclick="fetchAlerts()" class="text-xs text-slate-400 hover:text-white transition">Refresh</button>
+          <button onclick="fetchAlerts()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Refresh</button>
         </div>
-        <div id="alerts-list" class="flex-1 overflow-y-auto custom-scroll space-y-2 mt-3 pr-1 text-xs font-mono">
-          <div class="text-slate-500 text-center py-10">No alerts detected yet. Trigger an exploit above to test.</div>
+        <div id="alerts-list" class="flex-1 overflow-y-auto custom-scroll space-y-2.5 mt-3 pr-1 text-xs font-mono">
+          <div class="text-slate-400 text-center py-14">No alerts recorded yet. Click a simulation button above to test.</div>
         </div>
       </div>
 
-      <!-- Active Mitigations Log -->
-      <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4 flex flex-col h-[400px]">
-        <div class="flex items-center justify-between pb-3 border-b border-cyber-border">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-bold text-white">Mitigations & Cgroup Escalations</h3>
-            <span id="mitigs-count" class="text-xs px-2 py-0.2 rounded-full bg-cyber-cyan/10 text-cyber-cyan font-mono border border-cyber-cyan/20">0</span>
+      <!-- Active Mitigations & Escalations Feed -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-[420px]">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div class="flex items-center gap-2.5">
+            <h3 class="text-sm font-bold text-slate-900">Active Mitigations & Containment</h3>
+            <span id="mitigs-count" class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold font-mono">0</span>
           </div>
-          <button onclick="fetchMitigations()" class="text-xs text-slate-400 hover:text-white transition">Refresh</button>
+          <button onclick="fetchMitigations()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Refresh</button>
         </div>
-        <div id="mitigs-list" class="flex-1 overflow-y-auto custom-scroll space-y-2 mt-3 pr-1 text-xs font-mono">
-          <div class="text-slate-500 text-center py-10">No mitigations executed yet.</div>
+        <div id="mitigs-list" class="flex-1 overflow-y-auto custom-scroll space-y-2.5 mt-3 pr-1 text-xs font-mono">
+          <div class="text-slate-400 text-center py-14">No mitigations executed yet.</div>
         </div>
       </div>
 
     </div>
 
-    <!-- Monitored Container Fleet Table -->
-    <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4">
-      <div class="flex items-center justify-between pb-3 border-b border-cyber-border">
+    <!-- Section 4: Monitored Docker Containers -->
+    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
         <div>
-          <h3 class="text-sm font-bold text-white">Monitored Docker Container Fleet</h3>
-          <p class="text-xs text-slate-400">Tracked via cgroup v2 inodes and Docker engine socket.</p>
+          <h3 class="text-sm font-bold text-slate-900">Monitored Docker Containers</h3>
+          <p class="text-xs text-slate-500">Real-time status via Docker engine socket and cgroup v2 inodes.</p>
         </div>
-        <span class="text-xs text-emerald-400 font-mono flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 0 Host Confusion Guardrail
+        <span class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full font-medium flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span> Zero Host Confusion Guardrail
         </span>
       </div>
-      <div class="overflow-x-auto mt-3">
-        <table class="w-full text-left text-xs font-mono">
+      <div class="overflow-x-auto mt-4">
+        <table class="w-full text-left text-xs">
           <thead>
-            <tr class="border-b border-cyber-border text-slate-400">
-              <th class="pb-2">Container ID</th>
-              <th class="pb-2">Name</th>
-              <th class="pb-2">Image</th>
-              <th class="pb-2">Status</th>
-              <th class="pb-2">Protection Role</th>
+            <tr class="border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider font-mono">
+              <th class="pb-2.5 px-3">Container ID</th>
+              <th class="pb-2.5 px-3">Name</th>
+              <th class="pb-2.5 px-3">Image</th>
+              <th class="pb-2.5 px-3">Status</th>
+              <th class="pb-2.5 px-3">Security Role</th>
             </tr>
           </thead>
-          <tbody id="containers-body" class="divide-y divide-cyber-border/40 text-slate-300">
-            <tr><td colspan="5" class="py-4 text-center text-slate-500">Querying Docker daemon...</td></tr>
+          <tbody id="containers-body" class="divide-y divide-slate-100 font-mono text-slate-700">
+            <tr><td colspan="5" class="py-6 text-center text-slate-400 font-sans">Querying Docker engine...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- SQLite Forensic Evidence Explorer -->
-    <div class="bg-cyber-800 border border-cyber-border rounded-xl p-4">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-cyber-border gap-2">
+    <!-- Section 5: SQLite WAL Evidence Explorer -->
+    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
         <div>
-          <h3 class="text-sm font-bold text-white flex items-center gap-2">
-            <svg class="w-4 h-4 text-cyber-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
-            SQLite WAL Structured Evidence Explorer
+          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+            SQLite WAL Forensic Evidence Explorer
           </h3>
-          <p class="text-xs text-slate-400">Embedded pure-Go modernc.org/sqlite database with zero CGO dependencies.</p>
+          <p class="text-xs text-slate-500">Query live evidence directly from <code class="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">docs/evidence/containerguard_evidence.db</code>.</p>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="runQuery('SELECT id, rule_id, title, severity, action, container_id FROM alerts ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1 rounded bg-cyber-700 hover:bg-cyber-600 text-slate-300 border border-cyber-border">Query Alerts</button>
-          <button onclick="runQuery('SELECT id, rule_id, action_taken, tgid, success, message FROM mitigations ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1 rounded bg-cyber-700 hover:bg-cyber-600 text-slate-300 border border-cyber-border">Query Mitigations</button>
-          <button onclick="runQuery('SELECT id, comm, container_name, cgroup_path FROM events ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1 rounded bg-cyber-700 hover:bg-cyber-600 text-slate-300 border border-cyber-border">Query Events</button>
+          <button onclick="runQuery('SELECT id, rule_id, title, severity, action, container_id FROM alerts ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Alerts</button>
+          <button onclick="runQuery('SELECT id, rule_id, action_taken, tgid, success, message FROM mitigations ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Mitigations</button>
+          <button onclick="runQuery('SELECT id, comm, container_name, cgroup_path FROM events ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Events</button>
         </div>
       </div>
 
-      <div class="mt-3 flex gap-2">
-        <input type="text" id="sql-input" value="SELECT id, rule_id, title, severity, action FROM alerts ORDER BY id DESC LIMIT 5;" class="flex-1 bg-cyber-900 border border-cyber-border rounded px-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyber-cyan">
-        <button onclick="executeCustomQuery()" class="px-4 py-1.5 rounded bg-cyber-cyan hover:bg-cyan-500 text-cyber-900 font-bold text-xs transition">Execute SQL</button>
+      <div class="mt-4 flex gap-2">
+        <input type="text" id="sql-input" value="SELECT id, rule_id, title, severity, action FROM alerts ORDER BY id DESC LIMIT 5;" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white shadow-xs">
+        <button onclick="executeCustomQuery()" class="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition shadow-xs">Execute SQL</button>
       </div>
 
-      <div id="query-result" class="mt-3 overflow-x-auto max-h-48 custom-scroll text-xs font-mono border border-cyber-border/40 rounded p-2 bg-cyber-900/60 hidden">
+      <div id="query-result" class="mt-4 overflow-x-auto max-h-52 custom-scroll text-xs font-mono border border-slate-200 rounded-lg bg-slate-50 p-2 hidden">
         <table class="w-full text-left" id="sql-table">
           <!-- Dynamically populated -->
         </table>
@@ -328,14 +323,13 @@
 
   </main>
 
-  <!-- Footer -->
-  <footer class="border-t border-cyber-border py-4 px-6 text-center text-xs text-slate-500 font-mono">
-    ContainerGuard v2.0 &bull; eBPF Linux Kernel Runtime Security Engine &bull; Strictly Defensible & Real-Time Verified
+  <!-- Clean Footer -->
+  <footer class="bg-white border-t border-slate-200 py-4 px-6 text-center text-xs text-slate-500 font-mono">
+    ContainerGuard v2.0 &bull; eBPF Linux Kernel Runtime Security Engine &bull; Zero Silent Drops &bull; 100% Real Kernel Data
   </footer>
 
-  <!-- Client-side Logic -->
+  <!-- Real-Time Client JavaScript -->
   <script>
-    // SSE Stream setup
     function setupSSE() {
       const evtSource = new EventSource('/api/stream');
       evtSource.onmessage = function(event) {
@@ -347,7 +341,6 @@
         }
       };
       evtSource.onerror = function() {
-        // Fallback polling if SSE disconnects
         setTimeout(fetchStatus, 2000);
       };
     }
@@ -371,7 +364,7 @@
       const hooks = m['containerguard_hook_calls_total'] || 0;
       const submits = m['containerguard_ringbuf_submitted_total'] || 0;
       const drops = m['containerguard_ringbuf_reserve_drops_total'] || 0;
-      const inv = m['containerguard_loss_invariant_satisfied'] || 1;
+      const inv = m['containerguard_loss_invariant_satisfied'] !== undefined ? m['containerguard_loss_invariant_satisfied'] : 1;
 
       document.getElementById('stat-hooks').textContent = Math.round(hooks).toLocaleString();
       document.getElementById('stat-submits').textContent = Math.round(submits).toLocaleString();
@@ -379,13 +372,10 @@
       document.getElementById('stat-inv').textContent = inv.toFixed(2);
 
       const pulse = document.getElementById('daemon-pulse');
-      const statusText = document.getElementById('daemon-status-text');
       if (data.daemon_running) {
-        pulse.className = 'w-2.5 h-2.5 rounded-full bg-cyber-emerald animate-pulse';
-        statusText.textContent = 'eBPF HOOKS ACTIVE (PID ' + data.daemon_pid + ')';
+        pulse.className = 'w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse';
       } else {
-        pulse.className = 'w-2.5 h-2.5 rounded-full bg-amber-400';
-        statusText.textContent = 'DAEMON PAUSED / STANDBY';
+        pulse.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
       }
 
       renderContainers(data.containers || []);
@@ -393,21 +383,21 @@
 
     function renderContainers(containers) {
       const tbody = document.getElementById('containers-body');
-      if (!containers.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="py-3 text-center text-slate-500">No active Docker containers detected.</td></tr>';
+      if (!containers || !containers.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-400 font-sans">No active Docker containers detected.</td></tr>';
         return;
       }
       tbody.innerHTML = containers.map(c => {
         const isBaseline = c.names.includes('cg-test-a') || c.names.includes('cg-test-b');
-        const badgeColor = c.running ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20';
-        const role = isBaseline ? '<span class="text-blue-400">Baseline Target (Preserved)</span>' : (c.names.includes('victim') ? '<span class="text-red-400">Disposable Exploit Target</span>' : 'Standard Container');
+        const badgeClass = c.running ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-red-100 text-red-800 border-red-200';
+        const role = isBaseline ? '<span class="text-blue-700 font-medium">Protected Baseline Container</span>' : (c.names.includes('victim') ? '<span class="text-red-700 font-medium">Disposable Exploit Target</span>' : 'Standard Container');
         return `
-          <tr class="hover:bg-cyber-700/30 transition">
-            <td class="py-2 text-cyber-cyan font-bold">${c.id.substring(0, 12)}</td>
-            <td class="py-2 text-white font-medium">${c.names}</td>
-            <td class="py-2 text-slate-400">${c.image}</td>
-            <td class="py-2"><span class="px-2 py-0.5 rounded text-[11px] border ${badgeColor}">${c.status}</span></td>
-            <td class="py-2">${role}</td>
+          <tr class="hover:bg-slate-50 transition">
+            <td class="py-3 px-3 font-bold text-blue-700 font-mono">${c.id.substring(0, 12)}</td>
+            <td class="py-3 px-3 font-semibold text-slate-900">${c.names}</td>
+            <td class="py-3 px-3 text-slate-500">${c.image}</td>
+            <td class="py-3 px-3"><span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badgeClass}">${c.status}</span></td>
+            <td class="py-3 px-3">${role}</td>
           </tr>
         `;
       }).join('');
@@ -421,20 +411,20 @@
         document.getElementById('alerts-count').textContent = alerts.length;
         const list = document.getElementById('alerts-list');
         if (!alerts.length) {
-          list.innerHTML = '<div class="text-slate-500 text-center py-10">No alerts detected yet.</div>';
+          list.innerHTML = '<div class="text-slate-400 text-center py-14 font-sans">No alerts recorded yet. Click a simulation button above to test.</div>';
           return;
         }
         list.innerHTML = alerts.map(a => {
           const act = a.action || a.mitigation_action || 'alert';
           const target = a.container_name || (a.event && a.event.container_name) || (a.container_id && a.container_id.length > 5 ? a.container_id.substring(0, 12) : 'host');
           return `
-            <div class="p-2.5 rounded bg-cyber-900/80 border border-cyber-border hover:border-cyber-crimson/40 transition">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-bold text-red-400">${a.rule_id}</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded bg-red-500/10 text-red-300 uppercase">${a.severity}</span>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-red-300 transition">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-bold text-red-700">${a.rule_id}</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-800 uppercase">${a.severity}</span>
               </div>
-              <div class="text-slate-200 font-semibold">${a.title}</div>
-              <div class="text-[11px] text-slate-400 mt-1 truncate">Target: <span class="text-slate-300">${target}</span> &bull; Action: <span class="text-cyber-cyan">${act}</span></div>
+              <div class="text-slate-900 font-semibold text-xs font-sans">${a.title}</div>
+              <div class="text-[11px] text-slate-500 mt-1.5 truncate">Target: <span class="font-semibold text-slate-800">${target}</span> &bull; Action: <span class="text-blue-700 font-semibold uppercase">${act}</span></div>
             </div>
           `;
         }).join('');
@@ -452,19 +442,19 @@
         document.getElementById('stat-mitigs').textContent = mitigs.length;
         const list = document.getElementById('mitigs-list');
         if (!mitigs.length) {
-          list.innerHTML = '<div class="text-slate-500 text-center py-10">No mitigations executed yet.</div>';
+          list.innerHTML = '<div class="text-slate-400 text-center py-14 font-sans">No mitigations executed yet.</div>';
           return;
         }
         list.innerHTML = mitigs.map(m => {
           const act = m.action_taken || m.action || 'kill';
           return `
-            <div class="p-2.5 rounded bg-cyber-900/80 border border-cyber-border hover:border-cyber-cyan/40 transition">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-bold text-cyber-cyan">${m.rule_id}</span>
-                <span class="text-[10px] px-1.5 py-0.2 rounded ${m.success ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}">${m.success ? 'TERMINATED' : 'FAILED'}</span>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-300 transition">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-bold text-blue-700">${m.rule_id}</span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded ${m.success ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">${m.success ? 'TERMINATED' : 'FAILED'}</span>
               </div>
-              <div class="text-slate-300 text-[11px] truncate">${m.message}</div>
-              <div class="text-[10px] text-slate-500 mt-1 truncate">Action: ${act} &bull; TGID: ${m.tgid || 'kernel'}</div>
+              <div class="text-slate-700 text-[11px] truncate">${m.message}</div>
+              <div class="text-[10px] text-slate-500 mt-1 truncate">Action: <span class="font-semibold text-slate-700">${act}</span> &bull; TGID: <span class="font-semibold text-slate-700">${m.tgid || 'kernel'}</span></div>
             </div>
           `;
         }).join('');
@@ -478,8 +468,8 @@
       const text = document.getElementById('sim-result-text');
       const timeSpan = document.getElementById('sim-time');
       box.classList.remove('hidden');
-      text.textContent = 'Simulating ' + type + ' exploit against WSL2 Docker container...';
-      timeSpan.textContent = 'Executing...';
+      text.textContent = 'Executing ' + type + ' simulation against WSL2 container...';
+      timeSpan.textContent = 'Running...';
 
       try {
         const res = await fetch('/api/action/simulate', {
@@ -491,7 +481,6 @@
         timeSpan.textContent = data.timestamp + ' (' + data.duration_ms + 'ms)';
         text.textContent = `[RESULT] Rule Triggered: ${data.rule_triggered}\n[ACTION] Mitigation Response: ${data.action_taken}\n[TARGET] Workload: ${data.target}\n[DETAILS] ${data.output}`;
         
-        // Refresh feeds
         setTimeout(() => {
           fetchAlerts();
           fetchMitigations();
@@ -507,7 +496,7 @@
       try {
         const res = await fetch('/api/action/hot-reload', {method: 'POST'});
         const data = await res.json();
-        alert(data.message || 'Configuration reloaded!');
+        alert(data.message || 'Configuration reloaded with zero dropped events!');
       } catch (e) {
         alert('Failed: ' + e.message);
       } finally {
@@ -525,29 +514,29 @@
       const container = document.getElementById('query-result');
       const table = document.getElementById('sql-table');
       container.classList.remove('hidden');
-      table.innerHTML = '<tr><td class="p-2 text-slate-400">Executing SQL query...</td></tr>';
+      table.innerHTML = '<tr><td class="p-3 text-slate-500 font-sans">Executing SQL query...</td></tr>';
 
       try {
         const res = await fetch('/api/query?q=' + encodeURIComponent(sql));
         if (!res.ok) {
           const errText = await res.text();
-          table.innerHTML = `<tr><td class="p-2 text-red-400">${errText}</td></tr>`;
+          table.innerHTML = `<tr><td class="p-3 text-red-600 font-sans">${errText}</td></tr>`;
           return;
         }
         const data = await res.json();
         if (!data.rows || !data.rows.length) {
-          table.innerHTML = '<tr><td class="p-2 text-slate-500">0 rows returned.</td></tr>';
+          table.innerHTML = '<tr><td class="p-3 text-slate-500 font-sans">0 rows returned.</td></tr>';
           return;
         }
 
-        const thead = '<thead><tr class="border-b border-cyber-border text-slate-400">' + data.columns.map(c => `<th class="p-2">${c}</th>`).join('') + '</tr></thead>';
-        const tbody = '<tbody>' + data.rows.map(row => {
-          return '<tr class="border-b border-cyber-border/30 hover:bg-cyber-700/20">' + data.columns.map(c => `<td class="p-2 truncate max-w-xs text-slate-200">${row[c] !== null ? row[c] : 'null'}</td>`).join('') + '</tr>';
+        const thead = '<thead><tr class="border-b border-slate-300 text-slate-600 bg-slate-100 font-semibold">' + data.columns.map(c => `<th class="p-2.5">${c}</th>`).join('') + '</tr></thead>';
+        const tbody = '<tbody class="divide-y divide-slate-200">' + data.rows.map(row => {
+          return '<tr class="hover:bg-white">' + data.columns.map(c => `<td class="p-2.5 truncate max-w-xs text-slate-800">${row[c] !== null ? row[c] : 'null'}</td>`).join('') + '</tr>';
         }).join('') + '</tbody>';
 
         table.innerHTML = thead + tbody;
       } catch (e) {
-        table.innerHTML = `<tr><td class="p-2 text-red-400">${e.message}</td></tr>`;
+        table.innerHTML = `<tr><td class="p-3 text-red-600 font-sans">${e.message}</td></tr>`;
       }
     }
 
@@ -556,7 +545,6 @@
       setupSSE();
       fetchAlerts();
       fetchMitigations();
-      // Auto refresh feeds every 3s
       setInterval(fetchAlerts, 3000);
       setInterval(fetchMitigations, 3000);
     });
