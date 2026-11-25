@@ -4,11 +4,26 @@ This runbook provides the complete spoken script, command instructions, screen l
 
 ---
 
-## 1. Quick-Start: 3 Ways to Run the Demo
+## 1. Quick-Start: Choose Your Presentation Format
 
-All demonstration capabilities are packed into a single, bulletproof, automated runner script: [`scripts/live_demo.sh`](file:///home/ram/ebpf-smoke-test/scripts/live_demo.sh).
+ContainerGuard provides four distinct demonstration experiences to match any presentation environment:
 
-### Option A: Guided Step-by-Step Walkthrough (Recommended)
+### Format 1: Live Web Browser Cyber-Defense Console (⭐ Ultimate Demo Experience)
+Launches the full interactive enterprise web dashboard on `http://localhost:8080`, accessible in your Windows or Linux browser:
+```bash
+cd /home/ram/ebpf-smoke-test
+sudo ./scripts/web_demo.sh
+```
+* **Browser URL:** Open `http://localhost:8080` in Chrome, Edge, or Firefox.
+* **What it shows:**
+  - Real-time Loss Conservation Invariant gauge ($H = S + D$, zero drops).
+  - One-click Live Attack Simulator (Writable Mount Exec `CG-RULE-002`, Privileged Breakout `CG-RULE-001`, Shell Ingress `CG-RULE-003`, Benign Workloads).
+  - Real-time SSE streaming alerts and nuclear `cgroup.kill` mitigation logs.
+  - Live Docker container fleet tracker with baseline non-target guardrails.
+  - Interactive SQLite WAL Evidence Explorer with live SQL query executor.
+  - Zero-downtime `SIGHUP` policy hot-reload button.
+
+### Format 2: Guided Step-by-Step Terminal Walkthrough (Viva / Evaluation)
 Walks through all 5 Acts with clear narration pauses, on-screen explanations, and automated execution:
 ```bash
 cd /home/ram/ebpf-smoke-test
@@ -16,7 +31,7 @@ sudo ./scripts/live_demo.sh --step
 ```
 *(Press Enter between steps to pace your narration with your slides.)*
 
-### Option B: 3-Pane Tmux Live Command Center
+### Format 3: 3-Pane Tmux Live Command Center
 Splits your terminal into a live 3-window operations dashboard:
 ```bash
 cd /home/ram/ebpf-smoke-test
@@ -26,8 +41,8 @@ sudo ./scripts/live_demo.sh --tmux
 * **Top-Right Window:** Live interactive `cg-top` terminal dashboard refreshing at 1 Hz.
 * **Bottom-Right Window:** Interactive attacker console for manual exploit execution.
 
-### Option C: Interactive Threat Lab
-Allows you or your evaluators to pick specific MITRE ATT&CK exploits on demand:
+### Format 4: Interactive CLI Threat Lab
+Allows you or your evaluators to pick specific MITRE ATT&CK exploits on demand from a terminal menu:
 ```bash
 cd /home/ram/ebpf-smoke-test
 sudo ./scripts/live_demo.sh --lab

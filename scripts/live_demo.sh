@@ -493,9 +493,10 @@ main() {
         echo -e "  ${C_BOLD}[1]${C_RESET} ${C_GREEN}${C_BOLD}Step-by-Step Guided Walkthrough${C_RESET} (Recommended for viva / evaluation)"
         echo -e "  ${C_BOLD}[2]${C_RESET} ${C_CYAN}${C_BOLD}3-Pane Tmux Live Command Center${C_RESET} (Daemon + cg-top + Attack Console)"
         echo -e "  ${C_BOLD}[3]${C_RESET} ${C_YELLOW}${C_BOLD}Automated 30-Second Showcase${C_RESET} (Fast automated test of all 5 acts)"
-        echo -e "  ${C_BOLD}[4]${C_RESET} ${C_MAGENTA}${C_BOLD}Interactive Threat & Exploit Lab${C_RESET} (Trigger specific exploits on demand)"
+        echo -e "  ${C_BOLD}[4]${C_RESET} ${C_YELLOW}${C_BOLD}Interactive Threat & Exploit Lab${C_RESET} (Trigger specific exploits on demand)"
+        echo -e "  ${C_BOLD}[5]${C_RESET} ${C_MAGENTA}${C_BOLD}Launch Live Web Browser Console${C_RESET} (http://localhost:8080)"
         echo -e "  ${C_BOLD}[0]${C_RESET} Exit\n"
-        read -rp "Select mode [1-4]: " mode
+        read -rp "Select mode [1-5]: " mode
     fi
     
     case "$mode" in
@@ -528,6 +529,9 @@ main() {
             ;;
         4|--lab|-l)
             exploit_lab
+            ;;
+        5|--web|-w)
+            bash "${ROOT_DIR}/scripts/web_demo.sh"
             ;;
         0|exit|q)
             exit 0
