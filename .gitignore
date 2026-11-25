@@ -20,6 +20,7 @@ Thumbs.db
 .env.*
 docs/evidence/*/runs/
 docs/evidence/live_run_*/
+docs/evidence/demo_run_*/
 docs/evidence/*.db*
 docs/evidence/*.jsonl
 build/
