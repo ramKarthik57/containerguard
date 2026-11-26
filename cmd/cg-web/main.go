@@ -37,6 +37,7 @@ type Server struct {
 	clients    map[chan []byte]bool
 	clientMu   sync.Mutex
 	lastScrape map[string]float64
+	lastStatus []byte
 }
 
 type StatusResponse struct {
@@ -76,11 +77,13 @@ type SimulationResponse struct {
 
 func main() {
 	port := flag.Int("port", 8080, "Web dashboard HTTP listen port")
-	metricsURL := flag.String("metrics-url", "http://localhost:9115/metrics", "ContainerGuard Prometheus metrics endpoint")
+	metricsURL := flag.String("metrics-url", "http://127.0.0.1:9115/metrics", "ContainerGuard Prometheus metrics endpoint")
 	dbPath := flag.String("db", "docs/evidence/containerguard_evidence.db", "SQLite evidence database path")
 	configPath := flag.String("config", "configs/containerguard.yaml", "YAML policy configuration path")
 	rootDir := flag.String("root", ".", "Project root directory")
 	flag.Parse()
+
+	mURL := strings.Replace(*metricsURL, "localhost", "127.0.0.1", 1)
 
 	absRoot, err := filepath.Abs(*rootDir)
 	if err != nil {
@@ -89,7 +92,7 @@ func main() {
 
 	cfg := Config{
 		Port:       *port,
-		MetricsURL: *metricsURL,
+		MetricsURL: mURL,
 		DBPath:     filepath.Join(absRoot, *dbPath),
 		ConfigPath: filepath.Join(absRoot, *configPath),
 		RootDir:    absRoot,
@@ -294,6 +297,10 @@ func (s *Server) broadcastLoop() {
 		}
 
 		payload, _ := json.Marshal(status)
+		s.mu.Lock()
+		s.lastStatus = payload
+		s.mu.Unlock()
+
 		s.clientMu.Lock()
 		for ch := range s.clients {
 			select {
@@ -341,6 +348,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	s.mu.RLock()
+	cached := s.lastStatus
+	s.mu.RUnlock()
+
+	if len(cached) > 0 {
+		w.Write(cached)
+		return
+	}
+
 	s.detectDaemon()
 	metrics := s.scrapeMetrics()
 	containers := s.getContainers()
@@ -368,8 +385,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		LastUpdated:    time.Now().Format("15:04:05 MST"),
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	payload, _ := json.Marshal(status)
+	s.mu.Lock()
+	s.lastStatus = payload
+	s.mu.Unlock()
+	w.Write(payload)
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
