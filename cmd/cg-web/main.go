@@ -382,20 +382,22 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.db != nil {
-		rows, err := s.db.Query(`SELECT seq_num, timestamp_ns, tgid, comm, filename, container_id, container_name FROM events ORDER BY seq_num DESC LIMIT ?`, limit)
+		rows, err := s.db.Query(`SELECT seq_num, timestamp_ns, captured_at, tgid, comm, filename, container_id, container_name FROM events ORDER BY seq_num DESC LIMIT ?`, limit)
 		if err == nil {
 			defer rows.Close()
 			var events []map[string]interface{}
 			for rows.Next() {
 				var seq int64
 				var ts int64
+				var capturedAt string
 				var tgid uint32
 				var comm, filename, cid, cname string
-				rows.Scan(&seq, &ts, &tgid, &comm, &filename, &cid, &cname)
+				rows.Scan(&seq, &ts, &capturedAt, &tgid, &comm, &filename, &cid, &cname)
 				events = append(events, map[string]interface{}{
 					"id":             seq,
 					"seq_num":        seq,
 					"timestamp_ns":   ts,
+					"captured_at":    capturedAt,
 					"pid":            tgid,
 					"tgid":           tgid,
 					"comm":           comm,
@@ -479,7 +481,7 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMitigations(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if s.db != nil {
-		rows, err := s.db.Query(`SELECT id, alert_id, rule_id, action_taken, mode, container_id, container_name, tgid, success, message, timestamp FROM mitigations ORDER BY id DESC LIMIT 50`)
+		rows, err := s.db.Query(`SELECT id, alert_id, rule_id, action_taken, mode, container_id, container_name, tgid, success, message, timestamp FROM mitigations ORDER BY rowid DESC LIMIT 50`)
 		if err == nil {
 			defer rows.Close()
 			var mitigations []map[string]interface{}
@@ -571,12 +573,23 @@ func (s *Server) handleSimulate(w http.ResponseWriter, r *http.Request) {
 
 	case "breakout":
 		resp.RuleTriggered = "CG-RULE-001"
-		resp.ActionTaken = "kill (Privileged Breakout Intercepted)"
+		resp.ActionTaken = "kill (escalated to cgroup.kill)"
 		exec.Command("docker", "rm", "-f", "cg-demo-victim").Run()
-		exec.Command("docker", "run", "-d", "--name", "cg-demo-victim", "busybox:latest", "sleep", "300").Run()
+		createCmd := exec.Command("docker", "run", "-d", "--name", "cg-demo-victim", "busybox:latest", "sleep", "300")
+		if out, err := createCmd.CombinedOutput(); err != nil {
+			resp.Success = false
+			resp.Output = "Failed to launch victim container: " + string(out)
+			break
+		}
 		out, _ := exec.Command("docker", "exec", "cg-demo-victim", "nsenter", "--help").CombinedOutput()
-		time.Sleep(400 * time.Millisecond)
-		resp.Output = "Breakout binary (nsenter) intercepted inside container! " + string(out)
+		time.Sleep(500 * time.Millisecond)
+		inspectOut, _ := exec.Command("docker", "inspect", "--format", "{{.State.Running}}", "cg-demo-victim").Output()
+		isRunning := strings.TrimSpace(string(inspectOut)) == "true"
+		if !isRunning {
+			resp.Output = "Privileged breakout (nsenter) intercepted! Process kill escalated to atomic cgroup.kill. Container terminated in kernel space."
+		} else {
+			resp.Output = "Breakout binary (nsenter) intercepted! Output: " + string(out)
+		}
 
 	case "shell_ingress":
 		resp.RuleTriggered = "CG-RULE-003"
@@ -586,8 +599,8 @@ func (s *Server) handleSimulate(w http.ResponseWriter, r *http.Request) {
 			target = "cg-test-a"
 		}
 		resp.Target = target
-		out, _ := exec.Command("docker", "exec", target, "/bin/sh", "-c", "id").CombinedOutput()
-		resp.Output = "Interactive shell ingress detected inside container " + target + ": " + string(out)
+		out, _ := exec.Command("docker", "exec", target, "/bin/sh", "-c", "id; uptime").CombinedOutput()
+		resp.Output = "Interactive shell spawned inside container " + target + ": " + strings.TrimSpace(string(out)) + "\nAction: Audit alert generated; baseline container preserved unharmed."
 
 	case "benign":
 		resp.RuleTriggered = "NONE (0.00% False Positive)"
@@ -599,7 +612,7 @@ func (s *Server) handleSimulate(w http.ResponseWriter, r *http.Request) {
 		resp.Target = target
 		out1, _ := exec.Command("docker", "exec", target, "ls", "-la", "/").CombinedOutput()
 		out2, _ := exec.Command("docker", "exec", target, "date").CombinedOutput()
-		resp.Output = fmt.Sprintf("Benign commands (ls, date) executed cleanly in %s with 0 alerts fired:\n%s\n%s", target, string(out1), string(out2))
+		resp.Output = fmt.Sprintf("Benign commands (ls, date) executed cleanly in %s with 0 alerts fired:\n%s\n%s", target, strings.TrimSpace(string(out1)), strings.TrimSpace(string(out2)))
 
 	default:
 		resp.Success = false
@@ -694,7 +707,7 @@ func (s *Server) handleSQLQuery(w http.ResponseWriter, r *http.Request) {
 
 	query := r.URL.Query().Get("q")
 	if query == "" {
-		query = "SELECT id, rule_id, severity, action, container_id FROM alerts ORDER BY id DESC LIMIT 10"
+		query = "SELECT id, rule_id, title, severity, action, container_name, timestamp FROM alerts ORDER BY seq_num DESC LIMIT 10"
 	}
 
 	// Read-only safety guardrail

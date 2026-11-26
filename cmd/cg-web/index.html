@@ -30,8 +30,11 @@
 </head>
 <body class="font-sans antialiased min-h-screen flex flex-col bg-slate-50 text-slate-900 custom-scroll">
 
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+
   <!-- Top Navigation Header -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 px-6 py-3.5 shadow-sm">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 px-6 py-3.5 shadow-sm">
     <div class="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       
       <!-- Brand & Kernel Info -->
@@ -131,7 +134,7 @@
         </div>
         <div class="mt-3">
           <div class="text-3xl font-extrabold font-mono text-red-600" id="stat-mitigs">0</div>
-          <div class="text-xs text-slate-500 font-medium mt-1">Atomic cgroup.kill (< 4ms)</div>
+          <div class="text-xs text-slate-500 font-medium mt-1">Atomic cgroup.kill (&lt; 4ms)</div>
         </div>
       </div>
 
@@ -145,7 +148,7 @@
             <span class="w-2.5 h-2.5 rounded-full bg-red-600"></span>
             Interactive Live Attack & Containment Lab
           </h2>
-          <p class="text-xs text-slate-500 mt-0.5">Click any exploit scenario to trigger it live in a WSL2 Docker container. Watch ContainerGuard detect and neutralize it in real time.</p>
+          <p class="text-xs text-slate-500 mt-0.5">Click any scenario to trigger it live in a real WSL2 container. Watch ContainerGuard detect and neutralize it in kernel space.</p>
         </div>
         <div class="text-xs font-medium text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
           Target Container: <span class="font-mono font-bold text-blue-700">cg-demo-victim</span>
@@ -163,7 +166,7 @@
               <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">KILL</span>
             </div>
             <h3 class="text-sm font-bold text-slate-900 group-hover:text-red-700 transition">Writable Mount Exec</h3>
-            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Executes <code class="bg-slate-200 text-slate-800 px-1 rounded">/tmp/malicious.sh</code> inside container. Triggers atomic cgroup.kill.</p>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Executes <code class="bg-slate-200 text-slate-800 px-1 rounded">/tmp/malicious.sh</code> inside container. Intercepted &amp; terminated via atomic cgroup.kill.</p>
           </div>
           <div class="mt-4 text-xs font-semibold text-blue-600 group-hover:text-red-700 flex items-center gap-1 font-mono">
             Execute Exploit &rarr;
@@ -178,7 +181,7 @@
               <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">CRITICAL</span>
             </div>
             <h3 class="text-sm font-bold text-slate-900 group-hover:text-red-700 transition">Privileged Breakout</h3>
-            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Executes namespace manipulation utility (<code class="bg-slate-200 text-slate-800 px-1 rounded">nsenter</code>). Intercepted instantly.</p>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Executes namespace manipulation utility (<code class="bg-slate-200 text-slate-800 px-1 rounded">nsenter</code>). Intercepted and terminated instantly.</p>
           </div>
           <div class="mt-4 text-xs font-semibold text-blue-600 group-hover:text-red-700 flex items-center gap-1 font-mono">
             Execute Exploit &rarr;
@@ -193,7 +196,7 @@
               <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">ALERT</span>
             </div>
             <h3 class="text-sm font-bold text-slate-900 group-hover:text-amber-700 transition">Shell Ingress Spawn</h3>
-            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Interactive shell (<code class="bg-slate-200 text-slate-800 px-1 rounded">/bin/sh</code>) spawned inside container <code class="bg-slate-200 text-slate-800 px-1 rounded">cg-test-a</code>.</p>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Interactive shell (<code class="bg-slate-200 text-slate-800 px-1 rounded">/bin/sh</code>) spawned inside <code class="bg-slate-200 text-slate-800 px-1 rounded">cg-test-a</code>. Alert generated; baseline preserved.</p>
           </div>
           <div class="mt-4 text-xs font-semibold text-blue-600 group-hover:text-amber-700 flex items-center gap-1 font-mono">
             Execute Ingress &rarr;
@@ -208,7 +211,7 @@
               <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">0% FPR</span>
             </div>
             <h3 class="text-sm font-bold text-slate-900 group-hover:text-emerald-700 transition">Legitimate System Commands</h3>
-            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Runs <code class="bg-slate-200 text-slate-800 px-1 rounded">ls, echo, date</code>. Verified: zero false alerts triggered.</p>
+            <p class="text-xs text-slate-600 mt-1 leading-relaxed">Runs standard commands (<code class="bg-slate-200 text-slate-800 px-1 rounded">ls, date</code>). Verified: zero false-positive alerts triggered.</p>
           </div>
           <div class="mt-4 text-xs font-semibold text-emerald-700 flex items-center gap-1 font-mono">
             Run Workload &rarr;
@@ -222,42 +225,59 @@
         <div class="flex items-center justify-between pb-2.5 border-b border-slate-800 text-slate-400">
           <div class="flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="font-semibold text-slate-300">Kernel Response & Telemetry Output</span>
+            <span class="font-semibold text-slate-300">Live Kernel Response &amp; Telemetry Output</span>
           </div>
-          <span id="sim-time" class="text-slate-400"></span>
+          <span id="sim-time" class="text-slate-400 font-semibold"></span>
         </div>
         <div id="sim-result-text" class="pt-3 whitespace-pre-wrap leading-relaxed text-slate-200"></div>
       </div>
     </div>
 
-    <!-- Section 3: Dual Live Feeds (Alerts & Mitigations) -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Section 3: Triple Live Feeds (Real-Time End-to-End Pipeline) -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-      <!-- Live Threat Alerts Feed -->
-      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-[420px]">
+      <!-- Column 1: Live Raw eBPF Kernel Events Feed -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-[440px]">
         <div class="flex items-center justify-between pb-3 border-b border-slate-200">
-          <div class="flex items-center gap-2.5">
-            <h3 class="text-sm font-bold text-slate-900">Live Threat Detection Alerts</h3>
-            <span id="alerts-count" class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold font-mono">0</span>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+            <h3 class="text-sm font-bold text-slate-900">Live eBPF Kernel Events</h3>
+            <span id="events-count" class="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold font-mono border border-blue-200">0</span>
+          </div>
+          <button onclick="fetchEvents()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Refresh</button>
+        </div>
+        <div id="events-list" class="flex-1 overflow-y-auto custom-scroll space-y-2.5 mt-3 pr-1 text-xs font-mono">
+          <div class="text-slate-400 text-center py-16 font-sans">Streaming kernel ring-buffer events...</div>
+        </div>
+      </div>
+
+      <!-- Column 2: Live Threat Detection Alerts Feed -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-[440px]">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-red-500"></span>
+            <h3 class="text-sm font-bold text-slate-900">Threat Detection Alerts</h3>
+            <span id="alerts-count" class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-bold font-mono border border-red-200">0</span>
           </div>
           <button onclick="fetchAlerts()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Refresh</button>
         </div>
         <div id="alerts-list" class="flex-1 overflow-y-auto custom-scroll space-y-2.5 mt-3 pr-1 text-xs font-mono">
-          <div class="text-slate-400 text-center py-14">No alerts recorded yet. Click a simulation button above to test.</div>
+          <div class="text-slate-400 text-center py-16 font-sans">No alerts recorded yet. Click a simulation button above to test.</div>
         </div>
       </div>
 
-      <!-- Active Mitigations & Escalations Feed -->
-      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-[420px]">
+      <!-- Column 3: Active Mitigations & Containment Feed -->
+      <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col h-[440px]">
         <div class="flex items-center justify-between pb-3 border-b border-slate-200">
-          <div class="flex items-center gap-2.5">
-            <h3 class="text-sm font-bold text-slate-900">Active Mitigations & Containment</h3>
-            <span id="mitigs-count" class="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold font-mono">0</span>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <h3 class="text-sm font-bold text-slate-900">Active Containment (cgroup.kill)</h3>
+            <span id="mitigs-count" class="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold font-mono border border-emerald-200">0</span>
           </div>
           <button onclick="fetchMitigations()" class="text-xs text-blue-600 hover:text-blue-800 font-medium">Refresh</button>
         </div>
         <div id="mitigs-list" class="flex-1 overflow-y-auto custom-scroll space-y-2.5 mt-3 pr-1 text-xs font-mono">
-          <div class="text-slate-400 text-center py-14">No mitigations executed yet.</div>
+          <div class="text-slate-400 text-center py-16 font-sans">No mitigations executed yet.</div>
         </div>
       </div>
 
@@ -303,18 +323,18 @@
           <p class="text-xs text-slate-500">Query live evidence directly from <code class="bg-slate-100 text-slate-700 px-1 py-0.5 rounded font-mono">docs/evidence/containerguard_evidence.db</code>.</p>
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="runQuery('SELECT id, rule_id, title, severity, action, container_name FROM alerts ORDER BY seq_num DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Alerts</button>
-          <button onclick="runQuery('SELECT id, rule_id, action_taken, tgid, success, message FROM mitigations ORDER BY id DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Mitigations</button>
-          <button onclick="runQuery('SELECT seq_num, comm, filename, container_name FROM events ORDER BY seq_num DESC LIMIT 5')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium">Events</button>
+          <button onclick="runQuery('SELECT id, rule_id, title, severity, action, container_name, timestamp FROM alerts ORDER BY seq_num DESC LIMIT 5;')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium transition">Alerts</button>
+          <button onclick="runQuery('SELECT id, rule_id, action_taken, tgid, success, message, timestamp FROM mitigations ORDER BY rowid DESC LIMIT 5;')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium transition">Mitigations</button>
+          <button onclick="runQuery('SELECT seq_num, comm, filename, container_name, captured_at FROM events ORDER BY seq_num DESC LIMIT 5;')" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-medium transition">Events</button>
         </div>
       </div>
 
       <div class="mt-4 flex gap-2">
-        <input type="text" id="sql-input" value="SELECT id, rule_id, title, severity, action, container_name FROM alerts ORDER BY seq_num DESC LIMIT 5;" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white shadow-xs">
+        <input type="text" id="sql-input" value="SELECT id, rule_id, title, severity, action, container_name, timestamp FROM alerts ORDER BY seq_num DESC LIMIT 5;" class="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white shadow-xs">
         <button onclick="executeCustomQuery()" class="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition shadow-xs">Execute SQL</button>
       </div>
 
-      <div id="query-result" class="mt-4 overflow-x-auto max-h-52 custom-scroll text-xs font-mono border border-slate-200 rounded-lg bg-slate-50 p-2 hidden">
+      <div id="query-result" class="mt-4 overflow-x-auto max-h-56 custom-scroll text-xs font-mono border border-slate-200 rounded-lg bg-slate-50 p-2 hidden">
         <table class="w-full text-left" id="sql-table">
           <!-- Dynamically populated -->
         </table>
@@ -325,11 +345,43 @@
 
   <!-- Clean Footer -->
   <footer class="bg-white border-t border-slate-200 py-4 px-6 text-center text-xs text-slate-500 font-mono">
-    ContainerGuard v2.0 &bull; eBPF Linux Kernel Runtime Security Engine &bull; Zero Silent Drops &bull; 100% Real Kernel Data
+    ContainerGuard v2.0 &bull; eBPF Linux Kernel Runtime Security Engine &bull; Zero Silent Drops &bull; 100% Real Kernel Telemetry
   </footer>
 
   <!-- Real-Time Client JavaScript -->
   <script>
+    function formatTime(isoStr) {
+      if (!isoStr) return '';
+      try {
+        const parts = isoStr.split('T');
+        if (parts.length > 1) {
+          return parts[1].substring(0, 8) + ' UTC';
+        }
+      } catch (_) {}
+      return isoStr;
+    }
+
+    function showToast(title, message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const bg = type === 'success' ? 'bg-emerald-600' : (type === 'error' ? 'bg-red-600' : 'bg-slate-900');
+      toast.className = `${bg} text-white text-xs px-4 py-3 rounded-xl shadow-lg border border-white/10 pointer-events-auto flex items-start justify-between gap-3 transition-all duration-300 transform translate-y-2 opacity-0`;
+      toast.innerHTML = `
+        <div>
+          <div class="font-bold">${title}</div>
+          <div class="text-slate-200 text-[11px] mt-0.5">${message}</div>
+        </div>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
     function setupSSE() {
       const evtSource = new EventSource('/api/stream');
       evtSource.onmessage = function(event) {
@@ -390,7 +442,7 @@
       tbody.innerHTML = containers.map(c => {
         const isBaseline = c.names.includes('cg-test-a') || c.names.includes('cg-test-b');
         const badgeClass = c.running ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-red-100 text-red-800 border-red-200';
-        const role = isBaseline ? '<span class="text-blue-700 font-medium">Protected Baseline Container</span>' : (c.names.includes('victim') ? '<span class="text-red-700 font-medium">Disposable Exploit Target</span>' : 'Standard Container');
+        const role = isBaseline ? '<span class="text-blue-700 font-semibold">Protected Baseline Container</span>' : (c.names.includes('victim') ? '<span class="text-red-700 font-semibold">Disposable Exploit Target</span>' : 'Standard Container');
         return `
           <tr class="hover:bg-slate-50 transition">
             <td class="py-3 px-3 font-bold text-blue-700 font-mono">${c.id.substring(0, 12)}</td>
@@ -403,6 +455,36 @@
       }).join('');
     }
 
+    async function fetchEvents() {
+      try {
+        const res = await fetch('/api/events?limit=25');
+        const data = await res.json();
+        const events = Array.isArray(data) ? data : [];
+        document.getElementById('events-count').textContent = events.length;
+        const list = document.getElementById('events-list');
+        if (!events.length) {
+          list.innerHTML = '<div class="text-slate-400 text-center py-16 font-sans">No kernel events captured yet.</div>';
+          return;
+        }
+        list.innerHTML = events.map(e => {
+          const cname = e.container_name || (e.container_id && e.container_id.length > 5 ? e.container_id.substring(0, 12) : 'host');
+          const timeStr = formatTime(e.captured_at || e.timestamp);
+          return `
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-300 transition">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-bold text-slate-800 font-mono">#${e.seq_num || e.id} &bull; ${e.comm || 'proc'}</span>
+                <span class="text-[10px] font-mono text-slate-500">${timeStr}</span>
+              </div>
+              <div class="text-blue-700 font-mono text-[11px] truncate font-medium">${e.filename || 'n/a'}</div>
+              <div class="text-[10px] text-slate-500 mt-1 truncate">Scope: <span class="font-semibold text-slate-700">${cname}</span> &bull; TGID: <span class="font-semibold text-slate-700 font-mono">${e.tgid || e.pid || 0}</span></div>
+            </div>
+          `;
+        }).join('');
+      } catch (e) {
+        console.error("fetchEvents error", e);
+      }
+    }
+
     async function fetchAlerts() {
       try {
         const res = await fetch('/api/alerts');
@@ -411,17 +493,21 @@
         document.getElementById('alerts-count').textContent = alerts.length;
         const list = document.getElementById('alerts-list');
         if (!alerts.length) {
-          list.innerHTML = '<div class="text-slate-400 text-center py-14 font-sans">No alerts recorded yet. Click a simulation button above to test.</div>';
+          list.innerHTML = '<div class="text-slate-400 text-center py-16 font-sans">No alerts recorded yet. Click a simulation button above to test.</div>';
           return;
         }
         list.innerHTML = alerts.map(a => {
           const act = a.action || a.mitigation_action || 'alert';
           const target = a.container_name || (a.event && a.event.container_name) || (a.container_id && a.container_id.length > 5 ? a.container_id.substring(0, 12) : 'host');
+          const timeStr = formatTime(a.timestamp);
           return `
             <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-red-300 transition">
               <div class="flex items-center justify-between mb-1.5">
-                <span class="font-bold text-red-700">${a.rule_id}</span>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-800 uppercase">${a.severity}</span>
+                <span class="font-bold text-red-700 font-mono">${a.rule_id}</span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-mono text-slate-500">${timeStr}</span>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-red-800 uppercase">${a.severity}</span>
+                </div>
               </div>
               <div class="text-slate-900 font-semibold text-xs font-sans">${a.title}</div>
               <div class="text-[11px] text-slate-500 mt-1.5 truncate">Target: <span class="font-semibold text-slate-800">${target}</span> &bull; Action: <span class="text-blue-700 font-semibold uppercase">${act}</span></div>
@@ -429,7 +515,7 @@
           `;
         }).join('');
       } catch (e) {
-        console.error(e);
+        console.error("fetchAlerts error", e);
       }
     }
 
@@ -442,24 +528,28 @@
         document.getElementById('stat-mitigs').textContent = mitigs.length;
         const list = document.getElementById('mitigs-list');
         if (!mitigs.length) {
-          list.innerHTML = '<div class="text-slate-400 text-center py-14 font-sans">No mitigations executed yet.</div>';
+          list.innerHTML = '<div class="text-slate-400 text-center py-16 font-sans">No mitigations executed yet.</div>';
           return;
         }
         list.innerHTML = mitigs.map(m => {
           const act = m.action_taken || m.action || 'kill';
+          const timeStr = formatTime(m.timestamp);
           return `
-            <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-300 transition">
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 hover:border-emerald-300 transition">
               <div class="flex items-center justify-between mb-1.5">
-                <span class="font-bold text-blue-700">${m.rule_id}</span>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded ${m.success ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">${m.success ? 'TERMINATED' : 'FAILED'}</span>
+                <span class="font-bold text-emerald-800 font-mono">${m.rule_id}</span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[10px] font-mono text-slate-500">${timeStr}</span>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded ${m.success ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-red-100 text-red-800'}">${m.success ? 'TERMINATED' : 'FAILED'}</span>
+                </div>
               </div>
               <div class="text-slate-700 text-[11px] truncate">${m.message}</div>
-              <div class="text-[10px] text-slate-500 mt-1 truncate">Action: <span class="font-semibold text-slate-700">${act}</span> &bull; TGID: <span class="font-semibold text-slate-700">${m.tgid || 'kernel'}</span></div>
+              <div class="text-[10px] text-slate-500 mt-1 truncate">Action: <span class="font-semibold text-slate-700 uppercase">${act}</span> &bull; TGID: <span class="font-semibold text-slate-700 font-mono">${m.tgid || 'kernel'}</span></div>
             </div>
           `;
         }).join('');
       } catch (e) {
-        console.error(e);
+        console.error("fetchMitigations error", e);
       }
     }
 
@@ -468,8 +558,8 @@
       const text = document.getElementById('sim-result-text');
       const timeSpan = document.getElementById('sim-time');
       box.classList.remove('hidden');
-      text.textContent = 'Executing ' + type + ' simulation against WSL2 container...';
-      timeSpan.textContent = 'Running...';
+      text.textContent = 'Executing real ' + type + ' exploit in WSL2 Docker container...';
+      timeSpan.textContent = 'Executing...';
 
       try {
         const res = await fetch('/api/action/simulate', {
@@ -481,12 +571,21 @@
         timeSpan.textContent = data.timestamp + ' (' + data.duration_ms + 'ms)';
         text.textContent = `[RESULT] Rule Triggered: ${data.rule_triggered}\n[ACTION] Mitigation Response: ${data.action_taken}\n[TARGET] Workload: ${data.target}\n[DETAILS] ${data.output}`;
         
+        showToast('Kernel Simulation Complete', `Rule ${data.rule_triggered} processed in ${data.duration_ms}ms`, 'success');
+
+        // Immediate and staggered refresh for real-time responsiveness
+        fetchEvents();
+        fetchAlerts();
+        fetchMitigations();
         setTimeout(() => {
+          fetchEvents();
           fetchAlerts();
           fetchMitigations();
-        }, 600);
+          fetchStatus();
+        }, 700);
       } catch (e) {
         text.textContent = 'Error executing simulation: ' + e.message;
+        showToast('Simulation Error', e.message, 'error');
       }
     }
 
@@ -496,9 +595,10 @@
       try {
         const res = await fetch('/api/action/hot-reload', {method: 'POST'});
         const data = await res.json();
-        alert(data.message || 'Configuration reloaded with zero dropped events!');
+        showToast('SIGHUP Reload Complete', data.message || 'Active YAML policy reloaded with zero dropped events!', 'success');
+        fetchStatus();
       } catch (e) {
-        alert('Failed: ' + e.message);
+        showToast('Reload Error', e.message, 'error');
       } finally {
         btn.textContent = 'SIGHUP Reload';
       }
@@ -543,10 +643,13 @@
     // Initialize
     window.addEventListener('DOMContentLoaded', () => {
       setupSSE();
+      fetchEvents();
       fetchAlerts();
       fetchMitigations();
-      setInterval(fetchAlerts, 3000);
-      setInterval(fetchMitigations, 3000);
+      fetchStatus();
+      setInterval(fetchEvents, 2500);
+      setInterval(fetchAlerts, 2500);
+      setInterval(fetchMitigations, 2500);
     });
   </script>
 </body>
